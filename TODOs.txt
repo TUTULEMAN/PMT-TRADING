@@ -6,3 +6,7 @@ TIMELINE:
     + integrate another free api if needed, just tell me
 - LAN game page: 8-bit poker
     + game will start if theres more than 2 people using the page hosted on github
+- Additional ideas
+    + DCF Calculator
+	+ IPO/Sec filings calendar
+	+ LAN/server friendly to allow user accounts to connect with PMT & ACM alumni and track each other's paper portfolios (future)
