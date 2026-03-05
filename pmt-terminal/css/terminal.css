@@ -31,6 +31,17 @@
   --p:#8f6ad9;
   --scanline:rgba(0,0,0,.015);
 }
+[data-theme="rgb"]{
+  --bg:#050611;--surface:#090b18;--s2:#0e1022;--border:#191d32;--bhi:#262b43;
+  --tx:#9fa7d8;--dim:#4f5674;--hi:#f4f5ff;--mid:#757e9f;
+  --g:#00ffb3;--gd:#00ffb312;--gg:#00ffb334;
+  --r:#ff417d;--rd:#ff417d1a;
+  --a:#ffc447;--ad:#ffc4471a;
+  --b:#4d7dff;--bd:#4d7dff1c;
+  --p:#b16dff;
+  --mono:'IBM Plex Mono',monospace;--sans:'Syne',sans-serif;
+  --scanline:rgba(0,0,0,.04);
+}
 html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--mono);font-size:12px;overflow:hidden}
 button{font-family:var(--mono);cursor:pointer}
 
@@ -416,12 +427,22 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
 .bored-seat-cards{display:flex;gap:4px}
 .bored-seat-cards .card{width:30px;height:40px}
 .bored-actions{margin-top:4px;display:flex;gap:8px;justify-content:flex-start}
+.bored-actions-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .bored-actions button{font-size:10px;padding:5px 11px;border-radius:4px;border:1px solid var(--bhi);background:var(--border);color:var(--hi);cursor:pointer;letter-spacing:.4px;text-transform:uppercase;transition:all .15s}
 .bored-actions button:hover{background:var(--bhi);border-color:var(--a);color:var(--hi)}
 .bored-actions button:last-child{border-color:var(--g);color:var(--g)}
 .bored-actions button:last-child:hover{background:var(--gd)}
+.bored-actions-amount{width:70px;font-size:10px;padding:4px 6px;border-radius:3px;border:1px solid var(--bhi);background:var(--bg);color:var(--hi);outline:none}
+.bored-actions-amount:focus{border-color:var(--g)}
+.bored-timer{font-size:9px;color:var(--dim);margin-left:auto;min-width:70px;text-align:right}
 .bored-actions-muted{font-size:9px;color:var(--dim);opacity:.8;align-items:center}
 .bored-log{margin-top:4px;padding:6px 8px;border-radius:4px;background:rgba(0,0,0,.35);border:1px solid var(--border);font-size:9px;color:var(--dim);max-height:80px;overflow-y:auto}
 .bored-log-line{margin-bottom:2px}
 .bored-log-line:last-child{margin-bottom:0}
 .bored-log-line.muted{opacity:.6}
+.bored-mode-toggle{display:flex;gap:4px;margin-top:2px}
+.bored-mode-toggle button{font-size:9px;padding:3px 7px;border-radius:3px;border:1px solid var(--bhi);background:var(--border);color:var(--dim);text-transform:uppercase;letter-spacing:.3px;cursor:pointer;transition:all .15s}
+.bored-mode-toggle button.on{color:var(--g);border-color:var(--g);background:var(--gd)}
+.card.hidden{background:linear-gradient(135deg,#20263a,#101320);color:transparent;border-style:dashed}
+#bored-graph{margin-top:6px;height:130px;min-height:90px;background:rgba(0,0,0,.35);border-radius:4px;border:1px solid var(--border);position:relative;overflow:hidden}
+.bored-graph-label{position:absolute;top:4px;left:8px;font-size:9px;color:var(--dim);letter-spacing:.4px;text-transform:uppercase;z-index:2}

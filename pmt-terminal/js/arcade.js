@@ -3,17 +3,38 @@
 //  Single player vs 4 bots, runs entirely in the browser.
 // ════════════════════════════════════
 
+// Use utils.esc if available (from utils.js); else minimal escape for in-app HTML
+function _esc(s) {
+  if (typeof esc === 'function') return esc(s);
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Simple config for the mini-game
+const BORED_PLAYER_NAMES = ['You', 'Bot 1', 'Bot 2', 'Bot 3', 'Bot 4'];
+const BORED_START_STACK = 1000;
+const BORED_ANTE = 10;
+const BORED_MIN_RAISE = 10;
+const BORED_MAX_RAISE = 200;
+const BORED_TURN_MS = 10000;
+
 window.boredState = {
-  players: [],      // { id, name, wins, lastHandType, cards:[], strength:[] }
+  players: [],      // { id, name, wins, money, lastHandType, cards:[], strength:[], folded, handContribution }
   community: [],    // 5 board cards
   status: 'idle',   // 'idle' | 'dealt'
   phase: 'idle',    // 'idle' | 'yourTurn' | 'bots' | 'showdown'
   resultText: '',
   handCount: 0,
   actions: [],      // textual action log for this hand
+  pot: 0,
+  mode: 'beginner', // 'beginner' | 'advanced'
+  bankHistory: [],  // [{ hand, values:[money per player]}]
+  turnDeadline: 0,
+  turnTimerId: null,
 };
 
-const BORED_PLAYER_NAMES = ['You', 'Bot 1', 'Bot 2', 'Bot 3', 'Bot 4'];
+let boredChart = null;
+let boredSeries = [];
 
 function initArcadeView() {
   const root = document.getElementById('gv');
@@ -40,6 +61,14 @@ function initArcadeView() {
               <label>Nickname</label>
               <input id="bored-nick" type="text" maxlength="16" placeholder="You" autocomplete="off" />
               <div class="arcade-hint">Optional — rename yourself for this session.</div>
+            </div>
+            <div class="arcade-field">
+              <label>Mode</label>
+              <div class="bored-mode-toggle">
+                <button id="bored-mode-beginner" class="on" onclick="boredSetMode('beginner')">Beginner</button>
+                <button id="bored-mode-advanced" onclick="boredSetMode('advanced')">Advanced</button>
+              </div>
+              <div class="arcade-hint">Beginner: see bot cards. Advanced: bots hidden until showdown.</div>
             </div>
             <button id="bored-deal-btn" onclick="boredDealHand()">Deal new hand</button>
             <div id="bored-status" class="arcade-status">No hands played yet.</div>
@@ -84,10 +113,16 @@ function initArcadeView() {
     id: idx,
     name,
     wins: 0,
+    money: BORED_START_STACK,
     lastHandType: '',
     cards: [],
     strength: null,
+    folded: false,
+    handContribution: 0,
   }));
+  boredState.handCount = 0;
+  boredState.bankHistory = [];
+  boredState.pot = 0;
 
   boredRender();
 }
@@ -102,6 +137,12 @@ function boredDealHand() {
     else boredState.players[0].name = 'You';
   }
 
+  // Clear any previous turn timer
+  if (boredState.turnTimerId) {
+    clearInterval(boredState.turnTimerId);
+    boredState.turnTimerId = null;
+  }
+
   const deck = boredBuildDeck();
   boredShuffle(deck);
 
@@ -110,6 +151,8 @@ function boredDealHand() {
     p.cards = [deck.pop(), deck.pop()];
     p.strength = null;
     p.lastHandType = '';
+    p.folded = false;
+    p.handContribution = 0;
   });
 
   // Deal 5 community cards
@@ -119,40 +162,212 @@ function boredDealHand() {
   boredState.handCount += 1;
   boredState.actions = [];
   boredState.resultText = '';
+  boredState.pot = 0;
+
+  // Simple ante so there is money in the pot
+  boredState.players.forEach(p => {
+    const ante = Math.min(BORED_ANTE, p.money);
+    if (ante > 0) {
+      p.money -= ante;
+      p.handContribution += ante;
+      boredState.pot += ante;
+    }
+  });
 
   boredRender();
+  boredStartTurn();
 }
 
 function boredAct(choice) {
   if (boredState.status !== 'dealt' || boredState.phase !== 'yourTurn') return;
 
-  boredState.phase = 'bots';
-  boredState.actions = [];
+  // Stop turn timer as soon as user acts
+  if (boredState.turnTimerId) {
+    clearInterval(boredState.turnTimerId);
+    boredState.turnTimerId = null;
+  }
 
-  const youText = choice === 'raise'
-    ? 'You raise the stakes.'
-    : 'You decide to hold / check.';
+  const you = boredState.players[0];
+  if (!you) return;
+
+  let raiseAmt = 0;
+  if (choice === 'raise') {
+    const amtEl = document.getElementById('bored-raise-amt');
+    const parsed = amtEl ? parseInt(amtEl.value, 10) : 0;
+    raiseAmt = isNaN(parsed) ? 0 : parsed;
+    if (raiseAmt < BORED_MIN_RAISE) raiseAmt = BORED_MIN_RAISE;
+    if (raiseAmt > BORED_MAX_RAISE) raiseAmt = BORED_MAX_RAISE;
+    if (raiseAmt > you.money) raiseAmt = you.money;
+    if (raiseAmt <= 0) choice = 'hold';
+  }
+
+  boredState.phase = 'bots';
+  if (!Array.isArray(boredState.actions)) boredState.actions = [];
+
+  let youText = '';
+  if (choice === 'fold') {
+    you.folded = true;
+    youText = 'You fold your hand.';
+  } else if (choice === 'raise') {
+    youText = `You raise the stakes by $${raiseAmt}.`;
+    if (raiseAmt > 0) {
+      you.money -= raiseAmt;
+      you.handContribution += raiseAmt;
+      boredState.pot += raiseAmt;
+    }
+  } else {
+    youText = 'You decide to hold / check.';
+  }
   boredState.actions.push(youText);
 
-  // Simple bot behavior: mostly call/hold, occasionally fold or "light raise" for flavor.
-  boredState.players.slice(1).forEach(bot => {
-    const r = Math.random();
-    let line = '';
-    if (choice === 'raise') {
-      if (r < 0.2) line = `${bot.name} folds.`;
-      else if (r < 0.9) line = `${bot.name} calls your raise.`;
-      else line = `${bot.name} re-raises light.`;
-    } else {
-      if (r < 0.1) line = `${bot.name} bets into the pot.`;
-      else line = `${bot.name} checks.`;
-    }
-    boredState.actions.push(line);
-  });
+  // Bots act around the table with simple personalities
+  boredRunBots(choice, raiseAmt);
 
-  // Go straight to showdown after a single decision round.
+  // Go to showdown after this betting round.
   boredEvaluateHands();
   boredState.phase = 'showdown';
   boredRender();
+}
+
+function boredSetMode(mode) {
+  if (mode !== 'beginner' && mode !== 'advanced') return;
+  boredState.mode = mode;
+  const b = document.getElementById('bored-mode-beginner');
+  const a = document.getElementById('bored-mode-advanced');
+  if (b) b.classList.toggle('on', mode === 'beginner');
+  if (a) a.classList.toggle('on', mode === 'advanced');
+  boredRender();
+}
+
+function boredStartTurn() {
+  if (boredState.status !== 'dealt') return;
+  boredState.phase = 'yourTurn';
+  boredState.turnDeadline = Date.now() + BORED_TURN_MS;
+
+  if (boredState.turnTimerId) {
+    clearInterval(boredState.turnTimerId);
+    boredState.turnTimerId = null;
+  }
+
+  const update = () => {
+    const el = document.getElementById('bored-timer');
+    const now = Date.now();
+    const msLeft = boredState.turnDeadline - now;
+    if (!el) {
+      return;
+    }
+    if (msLeft <= 0) {
+      el.textContent = 'Time: 0.0s';
+      clearInterval(boredState.turnTimerId);
+      boredState.turnTimerId = null;
+      // If still waiting on the user, auto-fold
+      if (boredState.status === 'dealt' && boredState.phase === 'yourTurn') {
+        boredAct('fold');
+      }
+      return;
+    }
+    el.textContent = 'Time: ' + (msLeft / 1000).toFixed(1) + 's';
+  };
+
+  update();
+  boredState.turnTimerId = setInterval(update, 100);
+}
+
+function boredHandStrengthForPlayer(p) {
+  const seven = p.cards.concat(boredState.community);
+  const { rankVec } = boredBest5Of7(seven);
+  return rankVec;
+}
+
+function boredRunBots(choice, raiseAmt) {
+  const bots = boredState.players.slice(1);
+
+  bots.forEach((bot, idx) => {
+    if (!bot || bot.money <= 0) return;
+
+    const isAggro = idx === 0;        // Bot 1 aggressive
+    const isBalanced = idx === 1;     // Bot 2 balanced
+    const isLoose = idx === 2;        // Bot 3 loose/passive
+    const isNit = idx >= 3;           // Bot 4 super conservative
+
+    const strength = boredHandStrengthForPlayer(bot);
+    const category = strength[0] || 0; // 0..8
+    const r = Math.random();
+
+    if (choice === 'fold') {
+      // User folded; bots just check around.
+      boredState.actions.push(`${bot.name} takes the pot uncontested.`);
+      return;
+    }
+
+    if (choice === 'raise' && raiseAmt > 0) {
+      // Respond to your raise.
+      let action = 'calls your raise.';
+      let extra = raiseAmt;
+
+      if (isAggro) {
+        if (category >= 4 || r > 0.3) {
+          action = 're-raises aggressively.';
+          extra = Math.min(Math.round(raiseAmt * 1.5), BORED_MAX_RAISE);
+        } else if (r < 0.15) {
+          bot.folded = true;
+          boredState.actions.push(`${bot.name} folds to your raise.`);
+          return;
+        }
+      } else if (isBalanced) {
+        if (category >= 3 && r > 0.2) {
+          action = 'calls your raise.';
+        } else if (r < 0.25) {
+          bot.folded = true;
+          boredState.actions.push(`${bot.name} folds, not loving this spot.`);
+          return;
+        } else {
+          action = 'calls your raise cautiously.';
+        }
+      } else if (isLoose) {
+        if (r < 0.15 && category <= 2) {
+          bot.folded = true;
+          boredState.actions.push(`${bot.name} gets scared and folds.`);
+          return;
+        } else {
+          action = 'splash-calls your raise.';
+        }
+      } else if (isNit) {
+        if (category >= 5 && r > 0.3) {
+          action = 'reluctantly calls — very strong hand.';
+        } else {
+          bot.folded = true;
+          boredState.actions.push(`${bot.name} instantly folds anything but a premium hand.`);
+          return;
+        }
+      }
+
+      extra = Math.min(extra, bot.money);
+      if (extra > 0) {
+        bot.money -= extra;
+        bot.handContribution += extra;
+        boredState.pot += extra;
+      }
+      boredState.actions.push(`${bot.name} ${action}`);
+    } else {
+      // You checked / held; bots may bet or check based on style.
+      if (isAggro && r > 0.3 && bot.money > 0) {
+        const bet = Math.min(BORED_MIN_RAISE * 2, bot.money);
+        bot.money -= bet;
+        bot.handContribution += bet;
+        boredState.pot += bet;
+        boredState.actions.push(`${bot.name} probes the pot for $${bet}.`);
+      } else if ((isBalanced || isLoose) && r > 0.7 && bot.money > 0) {
+        const bet = Math.min(BORED_MIN_RAISE, bot.money);
+        bot.money -= bet;
+        bot.handContribution += bet;
+        boredState.pot += bet;
+        boredState.actions.push(`${bot.name} tosses in a small bet of $${bet}.`);
+      } else {
+        boredState.actions.push(`${bot.name} checks.`);
+      }
+    }
+  });
 }
 
 // ── DECK HELPERS ─────────────────────
@@ -177,27 +392,62 @@ function boredShuffle(a) {
 // ── HAND EVALUATION ──────────────────
 
 function boredEvaluateHands() {
-  const all = [];
+  const contenders = [];
   boredState.players.forEach(p => {
+    if (p.folded) {
+      p.strength = null;
+      p.lastHandType = '';
+      return;
+    }
     const seven = p.cards.concat(boredState.community);
     const { rankVec, handType } = boredBest5Of7(seven);
     p.strength = rankVec;
     p.lastHandType = handType;
-    all.push({ player: p, rankVec });
+    contenders.push({ player: p, rankVec });
   });
 
-  // Find winner(s)
-  all.sort((a, b) => boredCompareRankVec(b.rankVec, a.rankVec));
-  const best = all[0].rankVec;
-  const winners = all.filter(x => boredCompareRankVec(x.rankVec, best) === 0).map(x => x.player);
+  if (!contenders.length) {
+    boredState.resultText = 'Everyone folded this hand.';
+    return;
+  }
 
-  winners.forEach(w => { w.wins += 1; });
+  // Find winner(s)
+  contenders.sort((a, b) => boredCompareRankVec(b.rankVec, a.rankVec));
+  const best = contenders[0].rankVec;
+  const winners = contenders.filter(x => boredCompareRankVec(x.rankVec, best) === 0).map(x => x.player);
+
+  // Distribute pot across winners
+  const pot = boredState.pot || 0;
+  if (pot > 0 && winners.length) {
+    const share = Math.floor(pot / winners.length);
+    let remainder = pot - share * winners.length;
+    winners.forEach((w, idx) => {
+      let gain = share;
+      if (remainder > 0) {
+        gain += 1;
+        remainder -= 1;
+      }
+      w.money += gain;
+      w.wins += 1;
+    });
+    boredState.pot = 0;
+  } else {
+    winners.forEach(w => { w.wins += 1; });
+  }
 
   const typeName = winners[0]?.lastHandType || 'High Card';
   const names = winners.map(w => w.id === 0 ? (w.name || 'You') : w.name).join(', ');
   boredState.resultText = winners.length === 1
     ? `Winner: ${names} with ${typeName}.`
     : `Split pot: ${names} with ${typeName}.`;
+
+  // Track bankroll history for graph
+  if (!Array.isArray(boredState.bankHistory)) boredState.bankHistory = [];
+  boredState.bankHistory.push({
+    hand: boredState.handCount,
+    values: boredState.players.map(p => p.money),
+  });
+  boredUpdateGraph();
 }
 
 function boredBest5Of7(cards7) {
@@ -340,8 +590,8 @@ function boredRender() {
       const li = document.createElement('li');
       li.className = 'arcade-player' + (p.id === 0 ? ' me' : '');
       li.innerHTML = `
-        <span class="arcade-player-name">${esc(p.name)}</span>
-        <span class="arcade-player-stack">Wins: ${p.wins}</span>
+        <span class="arcade-player-name">${_esc(p.name)}</span>
+        <span class="arcade-player-stack">Wins: ${p.wins} · $${p.money}</span>
         <span class="arcade-player-state">${p.lastHandType || ''}</span>`;
       list.appendChild(li);
     });
@@ -371,39 +621,66 @@ function boredRender() {
   }
 
   if (boredState.phase === 'yourTurn') {
-    ts.textContent = `Hand #${boredState.handCount} · Your turn — choose Hold or Raise.`;
+    ts.textContent = `Hand #${boredState.handCount} · Your turn — choose Fold, Hold, or Raise. · Pot: $${boredState.pot}`;
   } else if (boredState.phase === 'showdown') {
-    ts.textContent = `Hand #${boredState.handCount} · ${boredState.resultText}`;
+    ts.textContent = `Hand #${boredState.handCount} · ${boredState.resultText} · Pot: $${boredState.pot}`;
   } else {
-    ts.textContent = `Hand #${boredState.handCount}`;
+    ts.textContent = `Hand #${boredState.handCount} · Pot: $${boredState.pot}`;
   }
 
-  const board = boredState.community.map(c => `<div class="card">${esc(c)}</div>`).join('');
+  const board = boredState.community.map(c => `<div class="card">${_esc(c)}</div>`).join('');
 
   const rows = boredState.players.map(p => {
-    const cards = p.cards.map(c => `<div class="card">${esc(c)}</div>`).join('');
+    const isYou = p.id === 0;
+    const isShowdown = boredState.phase === 'showdown';
+    const isBeginner = boredState.mode === 'beginner';
+
+    let cardsHtml = '';
+    if (isYou) {
+      // Show one card first; reveal second after you act.
+      if (boredState.phase === 'yourTurn' && boredState.status === 'dealt') {
+        const first = p.cards[0];
+        const second = p.cards[1];
+        if (first) cardsHtml += `<div class="card">${_esc(first)}</div>`;
+        if (second) cardsHtml += `<div class="card hidden">??</div>`;
+      } else {
+        cardsHtml = p.cards.map(c => `<div class="card">${_esc(c)}</div>`).join('');
+      }
+    } else {
+      if (isBeginner || isShowdown) {
+        cardsHtml = p.cards.map(c => `<div class="card">${_esc(c)}</div>`).join('');
+      } else {
+        cardsHtml = p.cards.map(() => `<div class="card hidden">??</div>`).join('');
+      }
+    }
+
     const isYou = p.id === 0;
     return `
       <div class="bored-seat${isYou ? ' me' : ''}">
         <div class="bored-seat-head">
-          <span class="seat-name">${esc(p.name)}</span>
-          <span class="seat-meta">Wins: ${p.wins}${p.lastHandType ? ' · ' + p.lastHandType : ''}</span>
+          <span class="seat-name">${_esc(p.name)}</span>
+          <span class="seat-meta">Wins: ${p.wins} · $${p.money}${p.lastHandType ? ' · ' + p.lastHandType : ''}</span>
         </div>
-        <div class="bored-seat-cards">${cards}</div>
+        <div class="bored-seat-cards">${cardsHtml}</div>
       </div>`;
   }).join('');
 
   const actionsHtml = boredState.phase === 'yourTurn'
     ? `<div class="bored-actions">
-         <button onclick="boredAct('hold')">Hold / Check</button>
-         <button onclick="boredAct('raise')">Raise</button>
+         <div class="bored-actions-row">
+           <button onclick="boredAct('fold')">Fold</button>
+           <button onclick="boredAct('hold')">Hold / Check</button>
+           <button onclick="boredAct('raise')">Raise</button>
+           <input id="bored-raise-amt" class="bored-actions-amount" type="number" min="${BORED_MIN_RAISE}" max="${BORED_MAX_RAISE}" step="${BORED_MIN_RAISE}" value="${BORED_MIN_RAISE}"/>
+           <div id="bored-timer" class="bored-timer"></div>
+         </div>
        </div>`
     : `<div class="bored-actions bored-actions-muted">
          Use "Deal new hand" on the left to play another round.
        </div>`;
 
   const logHtml = boredState.actions.length
-    ? boredState.actions.map(l => `<div class="bored-log-line">${esc(l)}</div>`).join('')
+    ? boredState.actions.map(l => `<div class="bored-log-line">${_esc(l)}</div>`).join('')
     : '<div class="bored-log-line muted">Actions will appear here after you act.</div>';
 
   tv.innerHTML = `
@@ -419,7 +696,64 @@ function boredRender() {
     ${actionsHtml}
     <div class="bored-log">
       ${logHtml}
+    </div>
+    <div id="bored-graph">
+      <div class="bored-graph-label">Bankroll over hands</div>
     </div>`;
+
+  boredUpdateGraph();
+}
+
+function boredUpdateGraph() {
+  const container = document.getElementById('bored-graph');
+  if (!container || !window.LightweightCharts) return;
+
+  const history = boredState.bankHistory || [];
+  if (!history.length) {
+    container.setAttribute('data-empty', '1');
+    return;
+  }
+  container.removeAttribute('data-empty');
+
+  if (!boredChart) {
+    boredChart = LightweightCharts.createChart(container, {
+      height: 130,
+      layout: {
+        background: { color: 'transparent' },
+        textColor: '#9ea7bc',
+      },
+      grid: {
+        vertLines: { color: 'rgba(255,255,255,0.04)' },
+        horzLines: { color: 'rgba(255,255,255,0.06)' },
+      },
+      rightPriceScale: { visible: false },
+      timeScale: { visible: false },
+      handleScroll: false,
+      handleScale: false,
+    });
+
+    const colors = ['#00e5a0', '#4da6ff', '#ffb547', '#b490ff', '#ff3d5a'];
+    boredSeries = boredState.players.map((p, idx) =>
+      boredChart.addLineSeries({
+        color: colors[idx % colors.length],
+        lineWidth: 2,
+      })
+    );
+  }
+
+  history.forEach(point => {
+    const t = point.hand;
+    point.values.forEach((v, idx) => {
+      const series = boredSeries[idx];
+      if (!series) return;
+      // Rebuild full history for robustness
+      const data = history.map(h => ({
+        time: h.hand,
+        value: h.values[idx],
+      }));
+      series.setData(data);
+    });
+  });
 }
 
 function initArcadeOnReady() {

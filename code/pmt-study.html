@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PMT Trading · Study Materials</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;
+  background:#08090b;
+  color:#c9cdd8;
+  font-family:'Space Mono',monospace;
+}
+a{color:#4d9fff;text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Topbar (lightweight, echoes main app) */
+#topbar{
+  height:52px;
+  background:#0e1014;
+  border-bottom:1px solid #1d2028;
+  display:flex;
+  align-items:center;
+  padding:0 18px;
+  gap:18px;
+}
+#logo{
+  font-family:'Syne',sans-serif;
+  font-weight:800;
+  font-size:18px;
+  color:#eef0f5;
+  letter-spacing:-0.5px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+#logo em{color:#00e5a0;font-style:normal}
+#logo::before{
+  content:'';
+  width:7px;height:7px;border-radius:50%;
+  background:#00e5a0;
+  box-shadow:0 0 8px #00e5a0;
+}
+.tb-pill{
+  margin-left:auto;
+  font-size:10px;
+  color:#555b6a;
+  border:1px solid #1d2028;
+  border-radius:999px;
+  padding:4px 10px;
+  text-transform:uppercase;
+  letter-spacing:.7px;
+}
+.tb-pill a{color:#c9cdd8}
+
+/* Layout */
+#shell{
+  max-width:1120px;
+  margin:24px auto 40px;
+  padding:0 16px 32px;
+}
+
+header h1{
+  font-family:'Syne',sans-serif;
+  font-size:28px;
+  font-weight:800;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  margin-bottom:6px;
+}
+header p{
+  color:#7a8194;
+  font-size:12px;
+  max-width:640px;
+  line-height:1.6;
+}
+
+.grid{
+  margin-top:28px;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:18px;
+}
+
+.card{
+  background:#0e1014;
+  border:1px solid #1d2028;
+  border-radius:10px;
+  padding:16px 16px 14px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.card h2{
+  font-family:'Syne',sans-serif;
+  font-size:14px;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  color:#eef0f5;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.tag{
+  font-size:9px;
+  padding:2px 7px;
+  border-radius:999px;
+  border:1px solid #1d2028;
+  color:#7a8194;
+}
+.card ul{
+  list-style:none;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-size:11px;
+}
+.card li span.label{
+  font-weight:700;
+  color:#eef0f5;
+}
+.pill-links{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:4px;
+}
+.pill-links a{
+  font-size:10px;
+  padding:4px 9px;
+  border-radius:999px;
+  border:1px solid #1d2028;
+  background:#08090b;
+  color:#c9cdd8;
+}
+.pill-links a:hover{
+  border-color:#4d9fff;
+  background:#10131b;
+}
+
+.note{
+  margin-top:18px;
+  font-size:10px;
+  color:#555b6a;
+}
+
+@media (max-width:640px){
+  #shell{margin-top:18px}
+  header h1{font-size:22px}
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="logo">PMT <em>Trading</em></div>
+  <div class="tb-pill">
+    Study space · <a href="pmt-trading.html">back to terminal ↗</a>
+  </div>
+</div>
+
+<main id="shell">
+  <header>
+    <h1>Study Materials</h1>
+    <p>
+      Curated references for PMT traders: coding foundations, asset classes,
+      valuation, tools, and past PMT Trading modules.
+    </p>
+  </header>
+
+  <section class="grid">
+    <!-- Coding -->
+    <article class="card">
+      <h2>Coding<span class="tag">Python · C++ · FPGA</span></h2>
+      <ul>
+        <li>
+          <span class="label">Python</span> — primary language for research, prototyping, and backtests.
+          <div class="pill-links">
+            <a href="https://docs.python.org/3/" target="_blank">Python Docs</a>
+            <a href="https://pandas.pydata.org/docs/" target="_blank">pandas</a>
+            <a href="https://numpy.org/doc/" target="_blank">NumPy</a>
+            <a href="https://www.quantstart.com/articles/backtesting-system-in-python/" target="_blank">QuantStart article</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">C++</span> — low-latency, production-grade engines and infra.
+          <div class="pill-links">
+            <a href="https://en.cppreference.com/w/" target="_blank">cppreference</a>
+            <a href="https://godbolt.org/" target="_blank">Compiler Explorer</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">FPGA & hardware</span> — understanding how hardware & micro‑architecture impact latency.
+          <div class="pill-links">
+            <a href="https://www.intel.com/content/www/us/en/docs/programmable/683472/21-4/introduction-to-fpgas.html" target="_blank">Intro to FPGAs</a>
+            <a href="https://asic-world.com/verilog/veritut.html" target="_blank">Verilog basics</a>
+          </div>
+        </li>
+      </ul>
+    </article>
+
+    <!-- Asset Classes -->
+    <article class="card">
+      <h2>Asset Classes<span class="tag">Universe</span></h2>
+      <ul>
+        <li>
+          <span class="label">Fixed income</span> — rates, duration, credit, term structure.
+          <div class="pill-links">
+            <a href="https://www.investopedia.com/terms/f/fixedincome.asp" target="_blank">Fixed income primer</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Equities</span> — single‑name stocks, factors, index products.
+          <div class="pill-links">
+            <a href="https://www.investopedia.com/terms/e/equity.asp" target="_blank">Equity overview</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Crypto</span> — market microstructure, funding, basis trades.
+          <div class="pill-links">
+            <a href="https://www.binance.com/en/academy" target="_blank">Binance Academy</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Real estate & alts</span> — REITs, private markets, and alt risk premia.
+          <div class="pill-links">
+            <a href="https://www.investopedia.com/terms/r/reit.asp" target="_blank">REIT basics</a>
+          </div>
+        </li>
+      </ul>
+    </article>
+
+    <!-- Valuation methods -->
+    <article class="card">
+      <h2>Valuation Methods<span class="tag">Tech · Fundamental</span></h2>
+      <ul>
+        <li>
+          <span class="label">Technical analysis</span> — price/volume patterns, indicators, market microstructure.
+          <div class="pill-links">
+            <a href="https://school.stockcharts.com/" target="_blank">StockCharts school</a>
+            <a href="https://www.babypips.com/learn/forex/technical-analysis" target="_blank">BabyPips TA</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Fundamental analysis</span> — cash‑flow, multiples, quality, macro.
+          <div class="pill-links">
+            <a href="https://pages.stern.nyu.edu/~adamodar/" target="_blank">Aswath Damodaran</a>
+            <a href="https://www.investopedia.com/terms/f/fundamentalanalysis.asp" target="_blank">Fundamental overview</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Hybrid / quant</span> — factor models, risk premia, statistical arbitrage.
+          <div class="pill-links">
+            <a href="https://www.efrontiers.com/sites/default/files/quantitative_trading_ernie_chan.pdf" target="_blank">Quant trading (Chan excerpt)</a>
+          </div>
+        </li>
+      </ul>
+    </article>
+
+    <!-- Online materials -->
+    <article class="card">
+      <h2>Online Materials<span class="tag">PMT · Books · Video</span></h2>
+      <ul>
+        <li>
+          <span class="label">PMT Trading modules</span>
+          <div class="pill-links">
+            <a href="https://drive.google.com/drive/u/1/folders/1NErR96wQvUYF7d6U8zVKXZE8G6Xy0hbm" target="_blank">Google Drive folder</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">YouTube</span>
+          <div class="pill-links">
+            <a href="https://www.youtube.com/@QuantConnect" target="_blank">QuantConnect</a>
+            <a href="https://www.youtube.com/@TwoSigma" target="_blank">Two Sigma</a>
+            <a href="https://www.youtube.com/@mitocw" target="_blank">MIT OCW</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Books</span>
+          <div class="pill-links">
+            <a href="https://www.goodreads.com/book/show/967894.Algorithmic_Trading_and_DMA" target="_blank">Algorithmic Trading & DMA</a>
+            <a href="https://www.goodreads.com/book/show/103699.The_Man_Who_Solved_the_Market" target="_blank">The Man Who Solved the Market</a>
+          </div>
+        </li>
+      </ul>
+    </article>
+
+    <!-- Tools -->
+    <article class="card">
+      <h2>Tools<span class="tag">Stack</span></h2>
+      <ul>
+        <li>
+          <span class="label">Notebooks</span>
+          <div class="pill-links">
+            <a href="https://colab.research.google.com/" target="_blank">Google Colab</a>
+            <a href="https://jupyter.org/" target="_blank">Jupyter</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Python env</span>
+          <div class="pill-links">
+            <a href="https://www.anaconda.com/download" target="_blank">Anaconda</a>
+            <a href="https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html" target="_blank">Conda envs</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Collaboration</span>
+          <div class="pill-links">
+            <a href="https://github.com/" target="_blank">GitHub</a>
+            <a href="https://arxiv.org/" target="_blank">arXiv</a>
+          </div>
+        </li>
+      </ul>
+    </article>
+
+    <!-- Events -->
+    <article class="card">
+      <h2>Events & Networking<span class="tag">Stay Connected</span></h2>
+      <ul>
+        <li>
+          <span class="label">Tech & trading meetups</span>
+          <div class="pill-links">
+            <a href="https://www.meetup.com/find/?keywords=quant%20trading" target="_blank">Meetup (quant & trading)</a>
+            <a href="https://www.meetup.com/find/?keywords=python%20finance" target="_blank">Meetup (Python/fin)</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Campus & PMT</span>
+          <div class="pill-links">
+            <a href="https://www.linkedin.com/company/portfolio-management-team/about/" target="_blank">PMT on LinkedIn</a>
+            <a href="https://acm-uic.github.io/sigs/algotrading/" target="_blank">ACM@UIC SIG Algo Trading</a>
+          </div>
+        </li>
+      </ul>
+      <p class="note">
+        Future idea: plug in an events API to surface local finance/tech meetups directly in this panel.
+      </p>
+    </article>
+  </section>
+</main>
+
+</body>
+</html>
+

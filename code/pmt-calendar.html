@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PMT Calendar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#08090b;color:#c9cdd8;font-family:'Space Mono',monospace;font-size:12px}
+:root{
+  --bg:#08090b;--surface:#0e1014;--border:#1d2028;--border-hi:#2e333f;
+  --text:#c9cdd8;--text-dim:#555b6a;--text-hi:#eef0f5;
+  --green:#00e5a0;--green-dim:#00e5a012;--amber:#f5a623;
+  --red:#ff4d6a;--blue:#4d9fff;--purple:#a78bfa;
+  --mono:'Space Mono',monospace;--sans:'Syne',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);display:flex;flex-direction:column}
+#topbar{height:46px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:20px}
+#logo{font-family:var(--sans);font-weight:800;font-size:17px;color:var(--text-hi);letter-spacing:-0.5px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+#logo em{color:var(--green);font-style:normal}
+#logo::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s ease-in-out infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+.nav-btn{font-family:var(--mono);font-size:10px;color:var(--text-dim);background:none;border:1px solid transparent;padding:4px 11px;cursor:pointer;border-radius:3px;letter-spacing:.5px;text-transform:uppercase;transition:all .15s;white-space:nowrap}
+.nav-btn:hover{color:var(--text-hi);border-color:var(--border-hi);background:var(--border)}
+.nav-btn.active{color:var(--green);border-color:var(--green);background:var(--green-dim)}
+#tb-right{margin-left:auto;display:flex;align-items:center;gap:14px;font-size:10px;color:var(--text-dim)}
+#ws-dot{width:6px;height:6px;border-radius:50%;background:var(--text-dim)}
+#workspace{flex:1;display:flex;align-items:center;justify-content:center;padding:32px}
+.card{max-width:520px;width:100%;background:var(--surface);border-radius:8px;border:1px solid var(--border);padding:28px 26px;box-shadow:0 16px 40px #000a}
+.badge-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.14em}
+.badge{padding:2px 7px;border-radius:999px;border:1px solid var(--border-hi);background:var(--bg);color:var(--green);font-size:9px}
+.card h1{font-family:var(--sans);font-size:22px;font-weight:800;color:var(--text-hi);margin-bottom:10px}
+.pill-row{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}
+.pill{font-size:10px;padding:4px 9px;border-radius:999px;border:1px solid var(--border-hi);background:var(--bg);color:var(--text-dim)}
+.pill strong{color:var(--text-hi);font-weight:600}
+.lead{font-size:12px;color:var(--text-dim);line-height:1.7;margin-bottom:12px}
+.todo-list{font-size:11px;color:var(--text-dim);line-height:1.7;margin-left:14px}
+.todo-list li{margin-bottom:4px}
+.hint{margin-top:18px;font-size:10px;color:var(--text-dim);opacity:.7}
+.hint code{background:var(--bg);padding:2px 4px;border-radius:3px;border:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="logo">PMT <em>Calendar</em></div>
+  <button class="nav-btn" onclick="window.open('pmt-trading.html','_self')">Trading</button>
+  <button class="nav-btn" onclick="window.open('pmt-backtest.html','_blank')">Backtest</button>
+  <button class="nav-btn" onclick="window.open('pmt-backtest.html#analytics','_blank')">Analytics</button>
+  <button class="nav-btn" onclick="window.open('pmt-study.html','_blank')">Study</button>
+  <button class="nav-btn active">Calendar</button>
+  <div id="tb-right">
+    <div id="tb-status"><div id="ws-dot"></div><span id="ws-label">Under construction</span></div>
+  </div>
+</div>
+
+<div id="workspace">
+  <div class="card">
+    <div class="badge-row">
+      <span class="badge">Coming soon</span>
+      <span>IPO &amp; SEC filings calendar</span>
+    </div>
+    <h1>Calendar is under construction</h1>
+    <p class="lead">
+      We’re building a calendar view for upcoming <strong>IPOs</strong> and key <strong>SEC filings</strong>
+      (10‑K, 10‑Q, 8‑K, S‑1 and more) so you can see important events in one place.
+    </p>
+    <ul class="todo-list">
+      <li>Visual calendar of upcoming IPOs by date and sector</li>
+      <li>Timeline of upcoming and recent SEC filings for your watchlist</li>
+      <li>Links back into PMT Trading for deeper symbol analysis</li>
+    </ul>
+    <p class="hint">
+      For now this is a placeholder page. Future versions will pull IPO and filing data from our data providers
+      and integrate directly with your existing PMT workflow.
+    </p>
+  </div>
+</div>
+
+</body>
+</html>
+

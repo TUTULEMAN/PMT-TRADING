@@ -95,11 +95,12 @@ window.THEMES = {
   dark:  { bg:'#060709', surface:'#0b0d12', border:'#181c24', bhi:'#252b38', tx:'#3d4455', hi:'#dde2f0' },
   gray:  { bg:'#1a1d23', surface:'#22262e', border:'#343a46', bhi:'#454d5c', tx:'#5c6478', hi:'#e4e8f2' },
   light: { bg:'#f0f1f4', surface:'#ffffff', border:'#d0d4dc', bhi:'#bcc2ce', tx:'#8990a2', hi:'#1a1e2a' },
+  rgb:   { bg:'#050611', surface:'#090b18', border:'#191d32', bhi:'#262b43', tx:'#4f5674', hi:'#f4f5ff' },
 };
 window.curTheme = localStorage.getItem('pmt-theme') || 'dark';
 
 function cycleTheme() {
-  const order = ['dark','gray','light'];
+  const order = ['dark','gray','light','rgb'];
   const idx = (order.indexOf(curTheme) + 1) % order.length;
   curTheme = order[idx];
   applyTheme(curTheme);
