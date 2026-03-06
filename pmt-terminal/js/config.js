@@ -8,6 +8,30 @@ window.FH = 'https://finnhub.io/api/v1';
 window.KEY = '';
 window.MASSIVE = 'https://api.massive.com';
 window.MASSIVE_KEY = '';
+window.EODHD = 'https://eodhd.com/api';
+window.EODHD_KEY = '';
+
+// EODHD doesn't send CORS headers — route through a proxy when running in a browser.
+// Auto-detects on first call: tries direct, falls back to proxy, caches the result.
+window._eodhdDirect = null; // null=unknown, true=direct works, false=needs proxy
+window.CORS_PROXY = 'https://corsproxy.io/?';
+async function fetchEodhd(url) {
+  if (window._eodhdDirect === true) return fetch(url);
+  if (window._eodhdDirect === false) {
+    console.log('[EODHD] using CORS proxy');
+    return fetch(CORS_PROXY + encodeURIComponent(url));
+  }
+  try {
+    const r = await fetch(url);
+    window._eodhdDirect = true;
+    console.log('[EODHD] direct fetch OK — no proxy needed');
+    return r;
+  } catch (e) {
+    console.warn('[EODHD] direct fetch blocked (CORS) — switching to proxy', e.message);
+    window._eodhdDirect = false;
+    return fetch(CORS_PROXY + encodeURIComponent(url));
+  }
+}
 
 // Chart instances
 window.mc   = null;   // main chart
@@ -27,7 +51,7 @@ window.macdH2  = null;
 window.rawData    = [];
 window.curSym     = '';
 window.curTf      = 3;           // index into TIMEFRAMES
-window.curType    = 'candlestick';
+window.curType    = 'line';
 window.curSymType = 'stock';
 window.inds       = { rsi: false, macd: false };
 

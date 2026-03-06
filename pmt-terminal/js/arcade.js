@@ -36,18 +36,54 @@ window.boredState = {
 let boredChart = null;
 let boredSeries = [];
 
+// ── GAME PICKER ──────────────────────────────────────────────────────
+window.arcadeGame = 'picker';
+
 function initArcadeView() {
   const root = document.getElementById('gv');
   if (!root) return;
   if (document.getElementById('bored-root')) return;
+  showArcadePicker();
+}
 
-  // Create base UI shell
+function showArcadePicker() {
+  const root = document.getElementById('gv');
+  if (!root) return;
+  arcadeGame = 'picker';
+  root.innerHTML = `
+    <div id="bored-root">
+      <div class="arcade-header">
+        <div class="arcade-title"><span>Are You Bored?</span><span class="arcade-pill">Pick a game</span></div>
+        <div class="arcade-sub">Take a break from the charts. Pick a game below — everything runs locally in your browser.</div>
+      </div>
+      <div class="arcade-picker">
+        <div class="arcade-pick-card" onclick="switchToPoker()">
+          <div class="arcade-pick-icon">\u2660\u2665</div>
+          <div class="arcade-pick-name">Poker</div>
+          <div class="arcade-pick-desc">Texas Hold'em vs 4 bots. Quick hands, no accounts.</div>
+        </div>
+        <div class="arcade-pick-card" onclick="switchToChess()">
+          <div class="arcade-pick-icon">\u265A\u265E</div>
+          <div class="arcade-pick-name">Chess</div>
+          <div class="arcade-pick-desc">Play as white against a simple AI. Click pieces to move.</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function switchToPoker() { arcadeGame = 'poker'; initPokerView(); }
+function switchToChess() { arcadeGame = 'chess'; initChessView(); }
+
+function initPokerView() {
+  const root = document.getElementById('gv');
+  if (!root) return;
   root.innerHTML = `
     <div id="bored-root">
       <div class="arcade-header">
         <div class="arcade-title">
           <span>Are You Bored?</span>
           <span class="arcade-pill">Quick poker vs PMT bots</span>
+          <button class="arcade-back-btn" onclick="showArcadePicker()">\u2190 Back</button>
         </div>
         <div class="arcade-sub">
           Deal instant Texas Hold'em hands against four bots. No accounts, no server — just quick decisions.
@@ -653,8 +689,6 @@ function boredRender() {
         cardsHtml = p.cards.map(() => `<div class="card hidden">??</div>`).join('');
       }
     }
-
-    const isYou = p.id === 0;
     return `
       <div class="bored-seat${isYou ? ' me' : ''}">
         <div class="bored-seat-head">
@@ -756,6 +790,211 @@ function boredUpdateGraph() {
   });
 }
 
+// ════════════════════════════════════
+//  CHESS — play as white vs simple AI
+//  Uses chess.js for rules (CDN loaded before this file)
+// ════════════════════════════════════
+let chessGame = null;
+let chessSelected = null; // square like 'e2'
+let chessLegalMoves = [];
+let chessStatus = '';
+let chessHistory = [];
+
+const PIECE_UNICODE = {
+  wp:'\u2659',wn:'\u2658',wb:'\u2657',wr:'\u2656',wq:'\u2655',wk:'\u2654',
+  bp:'\u265F',bn:'\u265E',bb:'\u265D',br:'\u265C',bq:'\u265B',bk:'\u265A'
+};
+
+function initChessView() {
+  const root = document.getElementById('gv');
+  if (!root) return;
+
+  if (typeof Chess === 'undefined') {
+    root.innerHTML = '<div id="bored-root"><div class="arcade-header"><div class="arcade-title"><span>Chess</span><button class="arcade-back-btn" onclick="showArcadePicker()">\u2190 Back</button></div></div><p style="padding:24px;color:var(--dim)">chess.js library not loaded. Check your connection.</p></div>';
+    return;
+  }
+
+  chessGame = new Chess();
+  chessSelected = null;
+  chessLegalMoves = [];
+  chessHistory = [];
+  chessStatus = 'Your turn (White)';
+
+  root.innerHTML = `
+    <div id="bored-root">
+      <div class="arcade-header">
+        <div class="arcade-title">
+          <span>Are You Bored?</span>
+          <span class="arcade-pill">Chess vs AI</span>
+          <button class="arcade-back-btn" onclick="showArcadePicker()">\u2190 Back</button>
+        </div>
+        <div class="arcade-sub">You play as White. Click a piece to select, then click a destination. The AI responds as Black.</div>
+      </div>
+      <div class="chess-layout">
+        <div class="chess-board-wrap">
+          <div id="chess-board" class="chess-board"></div>
+        </div>
+        <div class="chess-sidebar">
+          <div class="arcade-card">
+            <div class="arcade-card-title">Status</div>
+            <div id="chess-status" class="chess-status-text">${chessStatus}</div>
+            <button class="chess-new-btn" onclick="chessNewGame()">New game</button>
+          </div>
+          <div class="arcade-card">
+            <div class="arcade-card-title">Moves</div>
+            <div id="chess-moves" class="chess-moves-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  renderChessBoard();
+}
+
+function chessNewGame() {
+  if (typeof Chess === 'undefined') return;
+  chessGame = new Chess();
+  chessSelected = null;
+  chessLegalMoves = [];
+  chessHistory = [];
+  chessStatus = 'Your turn (White)';
+  renderChessBoard();
+  const st = document.getElementById('chess-status');
+  if (st) st.textContent = chessStatus;
+  const mv = document.getElementById('chess-moves');
+  if (mv) mv.innerHTML = '';
+}
+
+function renderChessBoard() {
+  const el = document.getElementById('chess-board');
+  if (!el || !chessGame) return;
+  const board = chessGame.board();
+  let html = '';
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const file = 'abcdefgh'[c];
+      const rank = 8 - r;
+      const sq = file + rank;
+      const isDark = (r + c) % 2 === 1;
+      const piece = board[r][c];
+      const pieceStr = piece ? PIECE_UNICODE[piece.color + piece.type] || '' : '';
+      const isSelected = chessSelected === sq;
+      const isLegal = chessLegalMoves.includes(sq);
+      const isLastMove = chessHistory.length > 0 && (chessHistory[chessHistory.length - 1].from === sq || chessHistory[chessHistory.length - 1].to === sq);
+      let cls = 'chess-sq ' + (isDark ? 'dark' : 'light');
+      if (isSelected) cls += ' selected';
+      if (isLegal) cls += ' legal';
+      if (isLastMove) cls += ' last-move';
+      const label = (c === 0 ? `<span class="chess-rank">${rank}</span>` : '') + (r === 7 ? `<span class="chess-file">${file}</span>` : '');
+      html += `<div class="${cls}" data-sq="${sq}" onclick="chessClick('${sq}')">${label}<span class="chess-piece${piece && piece.color === 'b' ? ' black' : ''}">${pieceStr}</span></div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+function chessClick(sq) {
+  if (!chessGame || chessGame.game_over() || chessGame.turn() !== 'w') return;
+
+  if (chessSelected) {
+    if (chessLegalMoves.includes(sq)) {
+      let moveObj = { from: chessSelected, to: sq };
+      // Auto-promote to queen
+      const piece = chessGame.get(chessSelected);
+      if (piece && piece.type === 'p' && (sq[1] === '8' || sq[1] === '1')) {
+        moveObj.promotion = 'q';
+      }
+      const move = chessGame.move(moveObj);
+      if (move) {
+        chessHistory.push(move);
+        chessSelected = null;
+        chessLegalMoves = [];
+        renderChessBoard();
+        updateChessStatus();
+        updateChessMoves();
+        if (!chessGame.game_over()) {
+          chessStatus = 'AI thinking...';
+          const st = document.getElementById('chess-status');
+          if (st) st.textContent = chessStatus;
+          setTimeout(chessAiMove, 300 + Math.random() * 400);
+        }
+        return;
+      }
+    }
+    chessSelected = null;
+    chessLegalMoves = [];
+    renderChessBoard();
+  }
+
+  const piece = chessGame.get(sq);
+  if (piece && piece.color === 'w') {
+    chessSelected = sq;
+    const moves = chessGame.moves({ square: sq, verbose: true });
+    chessLegalMoves = moves.map(m => m.to);
+    renderChessBoard();
+  }
+}
+
+// Simple AI: evaluate moves by material gain + center control + randomness
+function chessAiMove() {
+  if (!chessGame || chessGame.game_over() || chessGame.turn() !== 'b') return;
+  const moves = chessGame.moves({ verbose: true });
+  if (!moves.length) return;
+
+  const pieceVal = { p: 1, n: 3, b: 3.2, r: 5, q: 9, k: 0 };
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const m of moves) {
+    let score = Math.random() * 0.5;
+    if (m.captured) score += pieceVal[m.captured] * 10;
+    if (m.flags.includes('k') || m.flags.includes('q')) score += 3;
+    // Prefer center squares
+    if ('de'.includes(m.to[0]) && '45'.includes(m.to[1])) score += 0.8;
+    if ('cf'.includes(m.to[0]) && '3456'.includes(m.to[1])) score += 0.3;
+    // Check bonus
+    chessGame.move(m);
+    if (chessGame.in_check()) score += 2;
+    chessGame.undo();
+
+    if (score > bestScore) { bestScore = score; best = m; }
+  }
+
+  if (best) {
+    const move = chessGame.move(best);
+    if (move) chessHistory.push(move);
+  }
+
+  renderChessBoard();
+  updateChessStatus();
+  updateChessMoves();
+}
+
+function updateChessStatus() {
+  const st = document.getElementById('chess-status');
+  if (!st || !chessGame) return;
+  if (chessGame.in_checkmate()) {
+    chessStatus = chessGame.turn() === 'w' ? 'Checkmate — AI wins!' : 'Checkmate — you win!';
+  } else if (chessGame.in_draw()) {
+    chessStatus = 'Draw!';
+  } else if (chessGame.in_stalemate()) {
+    chessStatus = 'Stalemate — draw!';
+  } else if (chessGame.in_check()) {
+    chessStatus = chessGame.turn() === 'w' ? 'Check! Your turn (White)' : 'AI thinking...';
+  } else {
+    chessStatus = chessGame.turn() === 'w' ? 'Your turn (White)' : 'AI thinking...';
+  }
+  st.textContent = chessStatus;
+}
+
+function updateChessMoves() {
+  const el = document.getElementById('chess-moves');
+  if (!el) return;
+  const pgn = chessGame.pgn({ max_width: 40, newline_char: '\n' });
+  el.textContent = pgn || 'No moves yet.';
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── INIT ON READY ────────────────────────────────────────────────────
 function initArcadeOnReady() {
   if (document.getElementById('gv')) initArcadeView();
 }

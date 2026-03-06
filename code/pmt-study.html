@@ -85,7 +85,7 @@ header p{
   gap:18px;
 }
 
-.card{
+.study-card{
   background:#0e1014;
   border:1px solid #1d2028;
   border-radius:10px;
@@ -94,7 +94,7 @@ header p{
   flex-direction:column;
   gap:10px;
 }
-.card h2{
+.study-card h2{
   font-family:'Syne',sans-serif;
   font-size:14px;
   letter-spacing:1px;
@@ -111,14 +111,14 @@ header p{
   border:1px solid #1d2028;
   color:#7a8194;
 }
-.card ul{
+.study-card ul{
   list-style:none;
   display:flex;
   flex-direction:column;
   gap:6px;
   font-size:11px;
 }
-.card li span.label{
+.study-card li span.label{
   font-weight:700;
   color:#eef0f5;
 }
@@ -173,7 +173,7 @@ header p{
 
   <section class="grid">
     <!-- Coding -->
-    <article class="card">
+    <article class="study-card">
       <h2>Coding<span class="tag">Python · C++ · FPGA</span></h2>
       <ul>
         <li>
@@ -203,7 +203,7 @@ header p{
     </article>
 
     <!-- Asset Classes -->
-    <article class="card">
+    <article class="study-card">
       <h2>Asset Classes<span class="tag">Universe</span></h2>
       <ul>
         <li>
@@ -234,7 +234,7 @@ header p{
     </article>
 
     <!-- Valuation methods -->
-    <article class="card">
+    <article class="study-card">
       <h2>Valuation Methods<span class="tag">Tech · Fundamental</span></h2>
       <ul>
         <li>
@@ -260,8 +260,67 @@ header p{
       </ul>
     </article>
 
+    <!-- UIC Research -->
+    <article class="study-card">
+      <h2>UIC Research<span class="tag">Faculty · Papers</span></h2>
+      <ul>
+        <li>
+          <span class="label">Prof. Oleg Bondarenko</span> — derivatives, options pricing, market microstructure.
+          <div class="pill-links">
+            <a href="https://business.uic.edu/profiles/bondarenko-oleg/" target="_blank">UIC Profile</a>
+            <a href="https://papers.ssrn.com/sol3/cf_dev/AbsByAuth.cfm?per_id=148152" target="_blank">SSRN Papers</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Prof. Lan Zhang</span> — high-frequency data, statistical arbitrage, econometrics.
+          <div class="pill-links">
+            <a href="https://business.uic.edu/profiles/lan-zhang/" target="_blank">UIC Profile</a>
+            <a href="https://scholar.google.com/citations?user=Y0q_BngAAAAJ" target="_blank">Google Scholar</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Prof. Gib Bassett</span> — quantile regression, risk analysis.
+          <div class="pill-links">
+            <a href="https://gib.people.uic.edu/" target="_blank">UIC Profile</a>
+          </div>
+        </li>
+      </ul>
+    </article>
+
+    <!-- Essential Books -->
+    <article class="study-card">
+      <h2>Essential Books<span class="tag">Library</span></h2>
+      <ul>
+        <li>
+          <span class="label">Quantitative Trading</span> by Ernest P. Chan. The bible for retail quants and basic stat-arb.
+          <div class="pill-links">
+            <a href="https://www.goodreads.com/book/show/443641.Quantitative_Trading" target="_blank">Goodreads</a>
+            <a href="https://www.efrontiers.com/sites/default/files/quantitative_trading_ernie_chan.pdf" target="_blank">Excerpt (PDF)</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Machine Learning for Algorithmic Trading</span> by Stefan Jansen. Predictive models, NLP, feature engineering.
+          <div class="pill-links">
+            <a href="https://github.com/stefan-jansen/machine-learning-for-trading" target="_blank">GitHub Repo</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Options, Futures, and Other Derivatives</span> by John C. Hull. The industry standard text for pricing.
+          <div class="pill-links">
+            <a href="https://www.goodreads.com/book/show/288229.Options_Futures_and_Other_Derivatives" target="_blank">Goodreads</a>
+          </div>
+        </li>
+        <li>
+          <span class="label">Advances in Active Portfolio Management</span> by Grinold & Kahn. Factor investing and portfolio construction.
+          <div class="pill-links">
+            <a href="https://www.goodreads.com/book/show/6966155-advances-in-active-portfolio-management" target="_blank">Goodreads</a>
+          </div>
+        </li>
+      </ul>
+    </article>
+
     <!-- Online materials -->
-    <article class="card">
+    <article class="study-card">
       <h2>Online Materials<span class="tag">PMT · Books · Video</span></h2>
       <ul>
         <li>
@@ -275,7 +334,8 @@ header p{
           <div class="pill-links">
             <a href="https://www.youtube.com/@QuantConnect" target="_blank">QuantConnect</a>
             <a href="https://www.youtube.com/@TwoSigma" target="_blank">Two Sigma</a>
-            <a href="https://www.youtube.com/@mitocw" target="_blank">MIT OCW</a>
+            <a href="https://www.youtube.com/@mitocw" target="_blank">MIT OCW (Finance)</a>
+            <a href="https://www.youtube.com/c/PartTimeLarry" target="_blank">Part Time Larry (Algo)</a>
           </div>
         </li>
         <li>
@@ -289,9 +349,17 @@ header p{
     </article>
 
     <!-- Tools -->
-    <article class="card">
-      <h2>Tools<span class="tag">Stack</span></h2>
+    <article class="study-card">
+      <h2>Tools & Frameworks<span class="tag">Stack</span></h2>
       <ul>
+        <li>
+          <span class="label">Backtesting</span>
+          <div class="pill-links">
+            <a href="https://vectorbt.dev/" target="_blank">vectorbt</a>
+            <a href="https://kernc.github.io/backtesting.py/" target="_blank">backtesting.py</a>
+            <a href="https://www.zipline.io/" target="_blank">Zipline</a>
+          </div>
+        </li>
         <li>
           <span class="label">Notebooks</span>
           <div class="pill-links">
@@ -317,7 +385,7 @@ header p{
     </article>
 
     <!-- Events -->
-    <article class="card">
+    <article class="study-card">
       <h2>Events & Networking<span class="tag">Stay Connected</span></h2>
       <ul>
         <li>

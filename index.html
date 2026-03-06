@@ -7,6 +7,9 @@
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
 <link rel="stylesheet" href="pmt-terminal/css/terminal.css"/>
 </head>
 <body>
@@ -26,28 +29,32 @@
       </a>
     </div>
     <div class="mrow">
-      Two API keys are required. Get free keys at the links below.<br>
-      <span style="font-size:11px;opacity:.8">Price loads once, then chart grows from real-time data.</span>
+      Three API keys are required. Get free keys at the links below.<br>
+      <span style="font-size:11px;opacity:.8">Usage is spread across providers so no single key is overused.</span>
     </div>
     <div class="mfield">
-      <label>Finnhub API Key <span class="mfield-info" title="We recommend requesting the free tier — no credit card required.">ℹ</span> <span>(required)</span></label>
+      <label>Finnhub API Key <span class="mfield-info" title="Live quotes, news, sector data, calendar.">ℹ</span> <span>(required)</span></label>
       <input class="minput" id="m-key" type="text" placeholder="Finnhub key from finnhub.io" autocomplete="off" spellcheck="false"/>
     </div>
     <div class="mfield">
-      <label>Massive API Key <span class="mfield-info" title="We recommend requesting the free tier — no credit card required.">ℹ</span> <span>(required)</span></label>
+      <label>Massive API Key <span class="mfield-info" title="Prev-day and historical bars for stocks.">ℹ</span> <span>(required)</span></label>
       <input class="minput" id="massive-key" type="text" placeholder="Massive key from massive.com" autocomplete="off" spellcheck="false"/>
+    </div>
+    <div class="mfield">
+      <label>EODHD API Key <span class="mfield-info" title="Historical EOD data and performance metrics.">ℹ</span> <span>(required)</span></label>
+      <input class="minput" id="eodhd-key" type="text" placeholder="EODHD key from eodhd.com" autocomplete="off" spellcheck="false"/>
     </div>
     <div>
       <div class="mtest-row">
         <div id="mtest" style="flex:1">
           <div id="mtd"></div>
-          <div id="mtxt">Enter both keys above, then test</div>
+          <div id="mtxt">Enter all three keys above, then test</div>
         </div>
         <button id="mtest-btn" onclick="testKeys()">Test Keys</button>
       </div>
     </div>
     <button id="mgo" onclick="launch()">Launch Terminal →</button>
-    <p class="mnote">Free tiers: <a href="https://finnhub.io" target="_blank">finnhub.io</a> · <a href="https://massive.com" target="_blank">massive.com</a></p>
+    <p class="mnote">Free tiers: <a href="https://finnhub.io" target="_blank">finnhub.io</a> · <a href="https://massive.com" target="_blank">massive.com</a> · <a href="https://eodhd.com" target="_blank">eodhd.com</a></p>
   </div>
 </div>
 
@@ -59,12 +66,18 @@
   <div id="logo"><div class="dot-pulse"></div>PMT <em>Terminal</em></div>
   <button class="nb on" onclick="switchView('cv',this)">Charts</button>
   <button class="nb" onclick="switchView('bv',this)">Backtest</button>
+  <button class="nb" onclick="switchView('calv',this)">Calendar</button>
+  <button class="nb" onclick="switchView('sv',this)">Study</button>
   <button class="nb" onclick="switchView('gv',this)">Are You Bored?</button>
   <div id="rbar">
     <button id="theme-btn" onclick="cycleTheme()" title="Switch UI theme — Dark / Gray / Light / RGB">Dark</button>
     <div id="api-pill" onclick="document.getElementById('modal').style.display='flex'" title="Click to change API key">
       <div class="apd" id="apd"></div>
       <span id="apl">Not connected</span>
+    </div>
+    <div id="mkt-pill" title="NYSE / US equities market hours (ET)">
+      <div class="mktd" id="mktd"></div>
+      <span id="mktl">—</span>
     </div>
     <div id="clock">--:--:-- UTC</div>
   </div>
@@ -108,8 +121,8 @@
         </div>
         <div class="sep"></div>
         <div class="tg" id="tyg">
-          <button class="tbtn on" data-type="candlestick" title="Candlestick — traditional OHLC candles showing open, high, low, close">▓</button>
-          <button class="tbtn" data-type="line" title="Line — simple closing-price line for a clean trend view">╱</button>
+          <button class="tbtn" data-type="candlestick" title="Candlestick — traditional OHLC candles showing open, high, low, close">▓</button>
+          <button class="tbtn on" data-type="line" title="Line — simple closing-price line for a clean trend view">╱</button>
           <button class="tbtn" data-type="bar" title="Bar — OHLC bars, compact alternative to candlesticks">┃</button>
           <button class="tbtn" data-type="area" title="Area — filled area under the closing price for quick visual">◿</button>
         </div>
@@ -169,6 +182,32 @@
           <section class="ap-section">
             <div class="ap-section-title">Industry performance</div>
             <div id="industry-list" class="industry-list"></div>
+          </section>
+          <section class="ap-section">
+            <div class="ap-section-title">Order Book Depth</div>
+            <div id="ob-panel" class="ob-panel">
+              <div class="ob-tabs">
+                <button class="ob-tab on" data-ob="BTCUSDT">BTC/USDT</button>
+                <button class="ob-tab" data-ob="ETHUSDT">ETH/USDT</button>
+                <button class="ob-tab" data-ob="CURRENT">Current Symbol</button>
+              </div>
+              <div class="ob-body">
+                <div class="ob-stats" id="ob-stats"></div>
+                <div class="ob-depth-wrap">
+                  <canvas id="ob-depth-canvas" width="520" height="180"></canvas>
+                </div>
+                <div class="ob-book-grid">
+                  <div class="ob-side ob-bids">
+                    <div class="ob-side-head ob-bid-head">Bids</div>
+                    <div id="ob-bid-rows" class="ob-rows"></div>
+                  </div>
+                  <div class="ob-side ob-asks">
+                    <div class="ob-side-head ob-ask-head">Asks</div>
+                    <div id="ob-ask-rows" class="ob-rows"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
           <section class="ap-section" id="massive-snapshot" style="display:none"></section>
         </div>
@@ -360,6 +399,67 @@ function signal(i, data, ind) {
     </div>
   </div><!-- /bv -->
 
+  <!-- ══ CALENDAR VIEW ══ -->
+  <div class="view" id="calv">
+    <div class="cal-wrap">
+      <div id="calendar-container" class="cal-inner"></div>
+    </div>
+  </div>
+
+  <!-- ══ STUDY VIEW ══ -->
+  <div class="view" id="sv">
+    <div class="study-wrap">
+      <header>
+        <h1>Study Materials</h1>
+        <p>Curated references for PMT traders: coding foundations, asset classes, valuation, tools, and past PMT Trading modules.</p>
+      </header>
+      <section class="grid">
+        <article class="study-card"><h2>Coding<span class="tag">Python · C++ · FPGA</span></h2><ul>
+          <li><span class="label">Python</span> — primary language for research, prototyping, and backtests.<div class="pill-links"><a href="https://docs.python.org/3/" target="_blank">Python Docs</a><a href="https://pandas.pydata.org/docs/" target="_blank">pandas</a><a href="https://numpy.org/doc/" target="_blank">NumPy</a><a href="https://www.quantstart.com/articles/backtesting-system-in-python/" target="_blank">QuantStart article</a></div></li>
+          <li><span class="label">C++</span> — low-latency, production-grade engines and infra.<div class="pill-links"><a href="https://en.cppreference.com/w/" target="_blank">cppreference</a><a href="https://godbolt.org/" target="_blank">Compiler Explorer</a></div></li>
+          <li><span class="label">FPGA &amp; hardware</span> — understanding how hardware &amp; micro-architecture impact latency.<div class="pill-links"><a href="https://www.intel.com/content/www/us/en/docs/programmable/683472/21-4/introduction-to-fpgas.html" target="_blank">Intro to FPGAs</a><a href="https://asic-world.com/verilog/veritut.html" target="_blank">Verilog basics</a></div></li>
+        </ul></article>
+        <article class="study-card"><h2>Asset Classes<span class="tag">Universe</span></h2><ul>
+          <li><span class="label">Fixed income</span> — rates, duration, credit, term structure.<div class="pill-links"><a href="https://www.investopedia.com/terms/f/fixedincome.asp" target="_blank">Fixed income primer</a></div></li>
+          <li><span class="label">Equities</span> — single-name stocks, factors, index products.<div class="pill-links"><a href="https://www.investopedia.com/terms/e/equity.asp" target="_blank">Equity overview</a></div></li>
+          <li><span class="label">Crypto</span> — market microstructure, funding, basis trades.<div class="pill-links"><a href="https://www.binance.com/en/academy" target="_blank">Binance Academy</a></div></li>
+          <li><span class="label">Real estate &amp; alts</span> — REITs, private markets, and alt risk premia.<div class="pill-links"><a href="https://www.investopedia.com/terms/r/reit.asp" target="_blank">REIT basics</a></div></li>
+        </ul></article>
+        <article class="study-card"><h2>Valuation Methods<span class="tag">Tech · Fundamental</span></h2><ul>
+          <li><span class="label">Technical analysis</span> — price/volume patterns, indicators, market microstructure.<div class="pill-links"><a href="https://school.stockcharts.com/" target="_blank">StockCharts school</a><a href="https://www.babypips.com/learn/forex/technical-analysis" target="_blank">BabyPips TA</a></div></li>
+          <li><span class="label">Fundamental analysis</span> — cash-flow, multiples, quality, macro.<div class="pill-links"><a href="https://pages.stern.nyu.edu/~adamodar/" target="_blank">Aswath Damodaran</a><a href="https://www.investopedia.com/terms/f/fundamentalanalysis.asp" target="_blank">Fundamental overview</a></div></li>
+          <li><span class="label">Hybrid / quant</span> — factor models, risk premia, statistical arbitrage.<div class="pill-links"><a href="https://www.efrontiers.com/sites/default/files/quantitative_trading_ernie_chan.pdf" target="_blank">Quant trading (Chan excerpt)</a></div></li>
+        </ul></article>
+        <article class="study-card"><h2>UIC Research<span class="tag">Faculty · Papers</span></h2><ul>
+          <li><span class="label">Prof. Oleg Bondarenko</span> — derivatives, options pricing, market microstructure.<div class="pill-links"><a href="https://business.uic.edu/profiles/bondarenko-oleg/" target="_blank">UIC Profile</a><a href="https://papers.ssrn.com/sol3/cf_dev/AbsByAuth.cfm?per_id=148152" target="_blank">SSRN Papers</a></div></li>
+          <li><span class="label">Prof. Lan Zhang</span> — high-frequency data, statistical arbitrage, econometrics.<div class="pill-links"><a href="https://business.uic.edu/profiles/lan-zhang/" target="_blank">UIC Profile</a><a href="https://scholar.google.com/citations?user=Y0q_BngAAAAJ" target="_blank">Google Scholar</a></div></li>
+          <li><span class="label">Prof. Gib Bassett</span> — quantile regression, risk analysis.<div class="pill-links"><a href="https://gib.people.uic.edu/" target="_blank">UIC Profile</a></div></li>
+        </ul></article>
+        <article class="study-card"><h2>Essential Books<span class="tag">Library</span></h2><ul>
+          <li><span class="label">Quantitative Trading</span> by Ernest P. Chan. The bible for retail quants and basic stat-arb.<div class="pill-links"><a href="https://www.goodreads.com/book/show/443641.Quantitative_Trading" target="_blank">Goodreads</a><a href="https://www.efrontiers.com/sites/default/files/quantitative_trading_ernie_chan.pdf" target="_blank">Excerpt (PDF)</a></div></li>
+          <li><span class="label">Machine Learning for Algorithmic Trading</span> by Stefan Jansen. Predictive models, NLP, feature engineering.<div class="pill-links"><a href="https://github.com/stefan-jansen/machine-learning-for-trading" target="_blank">GitHub Repo</a></div></li>
+          <li><span class="label">Options, Futures, and Other Derivatives</span> by John C. Hull. The industry standard text for pricing.<div class="pill-links"><a href="https://www.goodreads.com/book/show/288229.Options_Futures_and_Other_Derivatives" target="_blank">Goodreads</a></div></li>
+          <li><span class="label">Advances in Active Portfolio Management</span> by Grinold &amp; Kahn. Factor investing and portfolio construction.<div class="pill-links"><a href="https://www.goodreads.com/book/show/6966155-advances-in-active-portfolio-management" target="_blank">Goodreads</a></div></li>
+        </ul></article>
+        <article class="study-card"><h2>Online Materials<span class="tag">PMT · Books · Video</span></h2><ul>
+          <li><span class="label">PMT Trading modules</span><div class="pill-links"><a href="https://drive.google.com/drive/u/1/folders/1NErR96wQvUYF7d6U8zVKXZE8G6Xy0hbm" target="_blank">Google Drive folder</a></div></li>
+          <li><span class="label">YouTube</span><div class="pill-links"><a href="https://www.youtube.com/@QuantConnect" target="_blank">QuantConnect</a><a href="https://www.youtube.com/@TwoSigma" target="_blank">Two Sigma</a><a href="https://www.youtube.com/@mitocw" target="_blank">MIT OCW (Finance)</a><a href="https://www.youtube.com/c/PartTimeLarry" target="_blank">Part Time Larry (Algo)</a></div></li>
+          <li><span class="label">Books</span><div class="pill-links"><a href="https://www.goodreads.com/book/show/967894.Algorithmic_Trading_and_DMA" target="_blank">Algorithmic Trading &amp; DMA</a><a href="https://www.goodreads.com/book/show/103699.The_Man_Who_Solved_the_Market" target="_blank">The Man Who Solved the Market</a></div></li>
+        </ul></article>
+        <article class="study-card"><h2>Tools &amp; Frameworks<span class="tag">Stack</span></h2><ul>
+          <li><span class="label">Backtesting</span><div class="pill-links"><a href="https://vectorbt.dev/" target="_blank">vectorbt</a><a href="https://kernc.github.io/backtesting.py/" target="_blank">backtesting.py</a><a href="https://www.zipline.io/" target="_blank">Zipline</a></div></li>
+          <li><span class="label">Notebooks</span><div class="pill-links"><a href="https://colab.research.google.com/" target="_blank">Google Colab</a><a href="https://jupyter.org/" target="_blank">Jupyter</a></div></li>
+          <li><span class="label">Python env</span><div class="pill-links"><a href="https://www.anaconda.com/download" target="_blank">Anaconda</a><a href="https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html" target="_blank">Conda envs</a></div></li>
+          <li><span class="label">Collaboration</span><div class="pill-links"><a href="https://github.com/" target="_blank">GitHub</a><a href="https://arxiv.org/" target="_blank">arXiv</a></div></li>
+        </ul></article>
+        <article class="study-card"><h2>Events &amp; Networking<span class="tag">Stay Connected</span></h2><ul>
+          <li><span class="label">Tech &amp; trading meetups</span><div class="pill-links"><a href="https://www.meetup.com/find/?keywords=quant%20trading" target="_blank">Meetup (quant &amp; trading)</a><a href="https://www.meetup.com/find/?keywords=python%20finance" target="_blank">Meetup (Python/fin)</a></div></li>
+          <li><span class="label">Campus &amp; PMT</span><div class="pill-links"><a href="https://www.linkedin.com/company/portfolio-management-team/about/" target="_blank">PMT on LinkedIn</a><a href="https://acm-uic.github.io/sigs/algotrading/" target="_blank">ACM@UIC SIG Algo Trading</a></div></li>
+        </ul></article>
+      </section>
+    </div>
+  </div>
+
   <!-- ══ ARCADE VIEW ══ -->
   <div class="view" id="gv">
     <!-- Filled by arcade.js -->
@@ -374,6 +474,10 @@ function signal(i, data, ind) {
 <script src="pmt-terminal/js/chart.js"></script>
 <script src="pmt-terminal/js/news.js"></script>
 <script src="pmt-terminal/js/backtest.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="pmt-terminal/js/calendar.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 <script src="pmt-terminal/js/analytics.js"></script>
 <script src="pmt-terminal/js/arcade.js"></script>
 </body>

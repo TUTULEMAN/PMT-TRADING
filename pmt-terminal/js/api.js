@@ -8,51 +8,155 @@ setInterval(() => {
     new Date().toUTCString().split(' ')[4] + ' UTC';
 }, 1000);
 
-// ── MODAL — BOTH KEYS REQUIRED ───────
+// ── MARKET STATUS (NYSE regular + pre/post) ──────────────────────────
+function getETComponents(d) {
+  // Returns { h, m, day } in US Eastern time, handling DST automatically
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric', minute: 'numeric', weekday: 'short',
+    hour12: false
+  }).formatToParts(d);
+  const get = t => parts.find(p => p.type === t)?.value;
+  const h = parseInt(get('hour'), 10);   // 0-23
+  const m = parseInt(get('minute'), 10);
+  const day = get('weekday'); // 'Mon','Tue',…
+  return { h, m, day };
+}
+
+function mktMinutesFromMidnight(d) {
+  const { h, m } = getETComponents(d);
+  return h * 60 + m;
+}
+
+function isWeekday(day) {
+  return !['Sat', 'Sun'].includes(day);
+}
+
+function updateMarketStatus() {
+  const now = new Date();
+  const { h, m, day } = getETComponents(now);
+  const mins = h * 60 + m;
+
+  const PRE_OPEN  = 4 * 60;       // 04:00 ET
+  const OPEN      = 9 * 60 + 30;  // 09:30 ET
+  const CLOSE     = 16 * 60;      // 16:00 ET
+  const POST_CLOSE = 20 * 60;     // 20:00 ET
+
+  const dot = document.getElementById('mktd');
+  const lbl = document.getElementById('mktl');
+  if (!dot || !lbl) return;
+
+  function fmtCountdown(targetMins) {
+    let diff = targetMins - mins;
+    if (diff < 0) diff += 24 * 60;
+    const hh = Math.floor(diff / 60);
+    const mm = diff % 60;
+    return hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
+  }
+
+  if (!isWeekday(day)) {
+    // Weekend — show next Monday open
+    dot.className = 'mktd closed';
+    lbl.textContent = 'Market closed';
+    return;
+  }
+
+  if (mins < PRE_OPEN) {
+    dot.className = 'mktd closed';
+    lbl.textContent = `Closed · Pre-market ${fmtCountdown(PRE_OPEN)}`;
+  } else if (mins < OPEN) {
+    dot.className = 'mktd pre';
+    lbl.textContent = `Pre-market · Opens ${fmtCountdown(OPEN)}`;
+  } else if (mins < CLOSE) {
+    const remaining = fmtCountdown(CLOSE);
+    dot.className = 'mktd open';
+    lbl.textContent = `NYSE Open · Closes ${remaining}`;
+  } else if (mins < POST_CLOSE) {
+    dot.className = 'mktd post';
+    lbl.textContent = `After-hours · Closes ${fmtCountdown(POST_CLOSE)}`;
+  } else {
+    dot.className = 'mktd closed';
+    lbl.textContent = `Market closed`;
+  }
+}
+
+updateMarketStatus();
+setInterval(updateMarketStatus, 30000);
+
+// ── MODAL — ALL THREE KEYS REQUIRED ───────
 function getModalKeys() {
   return {
     fh: document.getElementById('m-key').value.trim(),
-    mv: document.getElementById('massive-key').value.trim()
+    mv: document.getElementById('massive-key').value.trim(),
+    eodhd: document.getElementById('eodhd-key').value.trim()
   };
 }
 
 document.getElementById('m-key').addEventListener('input', () => {
   document.getElementById('mgo').classList.remove('active');
-  setTestState('idle', 'Enter both keys above, then test');
+  setTestState('idle', 'Enter all three keys above, then test');
 });
 document.getElementById('massive-key').addEventListener('input', () => {
   document.getElementById('mgo').classList.remove('active');
-  setTestState('idle', 'Enter both keys above, then test');
+  setTestState('idle', 'Enter all three keys above, then test');
+});
+document.getElementById('eodhd-key').addEventListener('input', () => {
+  document.getElementById('mgo').classList.remove('active');
+  setTestState('idle', 'Enter all three keys above, then test');
 });
 
 document.getElementById('m-key').addEventListener('keydown', e => { if (e.key === 'Enter') testKeys(); });
 document.getElementById('massive-key').addEventListener('keydown', e => { if (e.key === 'Enter') testKeys(); });
+document.getElementById('eodhd-key').addEventListener('keydown', e => { if (e.key === 'Enter') testKeys(); });
 
 async function testKeys() {
-  const { fh, mv } = getModalKeys();
-  if (!fh || !mv) {
-    setTestState('err', 'Enter both Finnhub and Massive keys');
+  const { fh, mv, eodhd } = getModalKeys();
+  if (!fh || !mv || !eodhd) {
+    setTestState('err', 'Enter all three keys (Finnhub, Massive, EODHD)');
     return;
   }
-  setTestState('chk', 'Testing both keys…');
+  setTestState('chk', 'Testing all three keys…');
   document.getElementById('mtest-btn').textContent = '…';
-  let fhOk = false, mvOk = false;
+  let fhOk = false, mvOk = false, eodhdOk = false;
+  const errors = [];
   try {
-    const [fr, mr] = await Promise.all([
+    const to = new Date();
+    const from = new Date(to);
+    from.setDate(from.getDate() - 5);
+    const fromStr = from.toISOString().slice(0, 10);
+    const toStr = to.toISOString().slice(0, 10);
+
+    const [frR, mrR, erR] = await Promise.allSettled([
       fetch(`${FH}/quote?symbol=AAPL&token=${fh}`).then(r => r.json()),
-      fetch(`${MASSIVE}/v2/aggs/ticker/AAPL/prev?apiKey=${encodeURIComponent(mv)}`).then(r => r.json())
+      fetch(`${MASSIVE}/v2/aggs/ticker/AAPL/prev?apiKey=${encodeURIComponent(mv)}`).then(r => r.json()),
+      fetchEodhd(`${EODHD}/eod/AAPL.US?from=${fromStr}&to=${toStr}&api_token=${encodeURIComponent(eodhd)}&fmt=json`).then(r => r.json())
     ]);
-    if (fr && typeof fr.c === 'number') fhOk = true;
-    if (mr && mr.results && Array.isArray(mr.results) && mr.results.length) mvOk = true;
-    if (fhOk && mvOk) {
-      setTestState('ok', '✓ Both keys valid — ready to launch');
+
+    if (frR.status === 'fulfilled') {
+      const fr = frR.value;
+      if (fr && typeof fr.c === 'number') fhOk = true;
+    } else { errors.push('Finnhub: ' + (frR.reason?.message || 'network error')); }
+
+    if (mrR.status === 'fulfilled') {
+      const mr = mrR.value;
+      if (mr && mr.results && Array.isArray(mr.results) && mr.results.length) mvOk = true;
+    } else { errors.push('Massive: ' + (mrR.reason?.message || 'network error')); }
+
+    if (erR.status === 'fulfilled') {
+      const er = erR.value;
+      if (er && Array.isArray(er) && er.length && typeof er[0].close === 'number') eodhdOk = true;
+    } else { errors.push('EODHD: ' + (erR.reason?.message || 'network error')); }
+
+    if (fhOk && mvOk && eodhdOk) {
+      setTestState('ok', '✓ All three keys valid — ready to launch');
       document.getElementById('mgo').classList.add('active');
-    } else if (!fhOk && !mvOk) {
-      setTestState('err', '✗ Both keys failed — check Finnhub & Massive');
-    } else if (!fhOk) {
-      setTestState('err', '✗ Finnhub key invalid — check finnhub.io');
     } else {
-      setTestState('err', '✗ Massive key invalid — check massive.com');
+      const missing = [];
+      if (!fhOk) missing.push('Finnhub');
+      if (!mvOk) missing.push('Massive');
+      if (!eodhdOk) missing.push('EODHD');
+      const detail = errors.length ? ' (' + errors[0] + ')' : '';
+      setTestState('err', '✗ Failed: ' + missing.join(', ') + detail);
     }
   } catch (e) {
     setTestState('err', '✗ ' + (e.message || 'Network error'));
@@ -74,10 +178,11 @@ function setTestState(state, msg) {
 }
 
 function launch() {
-  const { fh, mv } = getModalKeys();
-  if (!fh || !mv) return;
+  const { fh, mv, eodhd } = getModalKeys();
+  if (!fh || !mv || !eodhd) return;
   KEY = fh;
   MASSIVE_KEY = mv;
+  EODHD_KEY = eodhd;
   document.getElementById('modal').style.display = 'none';
   setApiStatus('live', 'Live');
   initCharts();
@@ -101,6 +206,7 @@ function switchView(id, btn) {
   document.querySelectorAll('.nb').forEach(b => b.classList.remove('on'));
   if (btn) btn.classList.add('on');
   if (id === 'cv') setTimeout(resizeCharts, 50);
+  if (id === 'calv' && typeof initCalendar === 'function') initCalendar();
 }
 
 function goBacktest() {
@@ -169,6 +275,77 @@ function normSym(sym) {
   return { type: 'stock', finnhub: sym, display: sym };
 }
 
+// ── EODHD SYMBOL FORMAT (for historical EOD) ─────
+function normSymToEodhd(sym) {
+  sym = sym.toUpperCase().trim();
+  if (sym === 'BTC') return 'BTC-USD.CC';
+  if (sym === 'ETH') return 'ETH-USD.CC';
+  if (sym === 'EURUSD' || (sym.length === 6 && /^[A-Z]{6}$/.test(sym))) return sym + '.FOREX';
+  if (sym.startsWith('^')) return null;
+  return sym + '.US';
+}
+
+// ── EODHD HISTORICAL (for backtest & dashboard %); usage spread: EODHD for history ─────
+async function fetchEODHDHistory(symbol, days) {
+  if (typeof EODHD_KEY === 'undefined' || !EODHD_KEY) return null;
+  const ticker = normSymToEodhd(symbol);
+  if (!ticker) return null;
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - (days || 365));
+  const fromStr = from.toISOString().slice(0, 10);
+  const toStr = to.toISOString().slice(0, 10);
+  try {
+    const r = await fetchEodhd(`${EODHD}/eod/${encodeURIComponent(ticker)}?from=${fromStr}&to=${toStr}&api_token=${encodeURIComponent(EODHD_KEY)}&fmt=json`);
+    const j = await r.json().catch(() => ({}));
+    if (!Array.isArray(j) || !j.length) return null;
+    return j.map(d => {
+      const t = new Date(d.date).getTime() / 1000;
+      return { time: Math.floor(t), open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume || 0 };
+    });
+  } catch (e) { console.warn('[EODHD] history error', e); return null; }
+}
+
+// Cache for historical % (1W, 1M, YTD) — one EODHD call per symbol per session
+window.eodhdHistCache = {};
+async function getEODHDHistoricalPct(sym) {
+  if (!EODHD_KEY) return null;
+  const cacheKey = sym.toUpperCase();
+  if (window.eodhdHistCache[cacheKey]) return window.eodhdHistCache[cacheKey];
+  const ticker = normSymToEodhd(sym);
+  if (!ticker) return null;
+  const to = new Date();
+  const from = new Date(to.getFullYear(), 0, 1);
+  const fromStr = from.toISOString().slice(0, 10);
+  const toStr = to.toISOString().slice(0, 10);
+  try {
+    const r = await fetchEodhd(`${EODHD}/eod/${encodeURIComponent(ticker)}?from=${fromStr}&to=${toStr}&api_token=${encodeURIComponent(EODHD_KEY)}&fmt=json`);
+    const j = await r.json().catch(() => ({}));
+    if (!Array.isArray(j) || !j.length) return null;
+    const now = to.getTime();
+    const oneWeekAgo = now - 7 * 86400 * 1000;
+    const oneMonthAgo = now - 30 * 86400 * 1000;
+    const ytdFirst = j[0] && j[0].date ? new Date(j[0].date).getTime() : null;
+    let close1W = null, close1M = null, closeYTD = null;
+    for (let i = j.length - 1; i >= 0; i--) {
+      const t = new Date(j[i].date).getTime();
+      const c = j[i].close;
+      if (close1W == null && t <= oneWeekAgo) close1W = c;
+      if (close1M == null && t <= oneMonthAgo) close1M = c;
+      if (closeYTD == null && ytdFirst != null && t <= ytdFirst) closeYTD = c;
+    }
+    if (j.length && closeYTD == null) closeYTD = j[0].close;
+    const lastClose = j[j.length - 1].close;
+    const out = {
+      chg1W: close1W != null && lastClose ? ((lastClose - close1W) / close1W * 100) : null,
+      chg1M: close1M != null && lastClose ? ((lastClose - close1M) / close1M * 100) : null,
+      chgYTD: closeYTD != null && lastClose ? ((lastClose - closeYTD) / closeYTD * 100) : null
+    };
+    window.eodhdHistCache[cacheKey] = out;
+    return out;
+  } catch (e) { return null; }
+}
+
 // ── TICKER TAPE (Finnhub for crypto/forex, Massive prev-day for stocks when MASSIVE_KEY set) ─────
 const TICKER_LABELS = {
   AAPL:'Apple', MSFT:'Microsoft', NVDA:'NVIDIA', TSLA:'Tesla',
@@ -200,12 +377,14 @@ async function fetchTickerMassive() {
 
 async function refreshTicker() {
   let items = [];
+  // Stocks: Massive only (one batch — saves Finnhub for live/WS)
   if (MASSIVE_KEY && TICKER_STOCKS.length) {
     items = await fetchTickerMassive();
   }
   const stockSyms = new Set(items.map(d => d.sym));
   const rest = TICKER.filter(s => !stockSyms.has(s));
-  if (rest.length) {
+  // Crypto/forex: Finnhub only
+  if (rest.length && KEY) {
     const results = await Promise.allSettled(rest.map(async s => {
       const sym = s === 'BTC' ? 'BINANCE:BTCUSDT' : s === 'ETH' ? 'BINANCE:ETHUSDT' : s === 'EURUSD' ? 'OANDA:EUR_USD' : s;
       const r = await fetch(`${FH}/quote?symbol=${sym}&token=${KEY}`);
@@ -220,14 +399,26 @@ async function refreshTicker() {
     items = items.concat(fromFh);
   }
   items.sort((a, b) => TICKER.indexOf(a.sym) - TICKER.indexOf(b.sym));
+  // Enrich with EODHD historical % (cached — one EODHD call per symbol per session)
+  if (typeof EODHD_KEY !== 'undefined' && EODHD_KEY && typeof getEODHDHistoricalPct === 'function' && items.length) {
+    const hist = await Promise.all(items.map(d => getEODHDHistoricalPct(d.sym)));
+    items = items.map((d, i) => ({ ...d, hist: hist[i] || null }));
+  }
   if (!items.length) return;
   const html = items.map(d => {
     const cls = d.chg > 0.05 ? 'up' : d.chg < -0.05 ? 'dn' : 'fl';
     const sign = d.chg > 0 ? '+' : '';
+    const histStr = d.hist && (d.hist.chg1W != null || d.hist.chg1M != null || d.hist.chgYTD != null)
+      ? ['1W', '1M', 'YTD'].map(l => {
+          const v = l === '1W' ? d.hist.chg1W : l === '1M' ? d.hist.chg1M : d.hist.chgYTD;
+          return v != null ? `${l} ${v >= 0 ? '+' : ''}${v.toFixed(1)}%` : null;
+        }).filter(Boolean).join(' · ')
+      : '';
     return `<div class="t-item">
       <span class="t-sym">${d.sym}</span>
       <span class="t-px">${fmtP(d.price)}</span>
       <span class="t-ch ${cls}">${sign}${(d.chg || 0).toFixed(2)}%</span>
+      ${histStr ? `<span class="t-hist">${histStr}</span>` : ''}
     </div>`;
   }).join('');
   const tt = document.getElementById('tape-track');
@@ -286,6 +477,7 @@ async function loadSym(sym) {
     rebuildSeries();
     setApiStatus('live', 'Live');
     wsSubscribe(curSym);
+    if (typeof refreshOBForSymbol === 'function') refreshOBForSymbol();
   } catch (e) {
     setApiStatus('err', 'Network error');
     document.getElementById('px').textContent = '—';
@@ -422,9 +614,10 @@ async function doSearch(q) {
   const qEnc = encodeURIComponent(q);
   let results = [];
   try {
-    const fhPromise = fetch(`${FH}/search?q=${qEnc}&token=${KEY}`).then(r => r.json());
-    const mvPromise = MASSIVE_KEY ? fetch(`${MASSIVE}/v3/reference/tickers?search=${qEnc}&active=true&limit=8&apiKey=${MASSIVE_KEY}`).then(r => r.json()) : Promise.resolve(null);
-    const [fj, mj] = await Promise.all([fhPromise, mvPromise]);
+    const fhPromise = fetch(`${FH}/search?q=${qEnc}&token=${KEY}`).then(r => r.json()).catch(() => ({}));
+    const mvPromise = MASSIVE_KEY ? fetch(`${MASSIVE}/v3/reference/tickers?search=${qEnc}&active=true&limit=8&apiKey=${MASSIVE_KEY}`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
+    const eodPromise = (typeof EODHD_KEY !== 'undefined' && EODHD_KEY) ? fetchEodhd(`${EODHD}/search/${qEnc}?api_token=${encodeURIComponent(EODHD_KEY)}&fmt=json&limit=5`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
+    const [fj, mj, ej] = await Promise.all([fhPromise, mvPromise, eodPromise]);
     results = (fj.result || []).filter(x => x.type && x.type !== 'EQS').map(x => ({ symbol: x.symbol, description: x.description }));
     if (mj && mj.results && Array.isArray(mj.results)) {
       const seen = new Set(results.map(x => x.symbol.toUpperCase()));
@@ -433,6 +626,16 @@ async function doSearch(q) {
         if (sym && !seen.has(sym)) {
           seen.add(sym);
           results.push({ symbol: sym, description: x.name || ('Massive: ' + sym) });
+        }
+      });
+    }
+    if (ej && Array.isArray(ej)) {
+      const seen = new Set(results.map(x => x.symbol.toUpperCase()));
+      ej.forEach(x => {
+        const sym = (x.code && x.exchange) ? `${String(x.code).split('.')[0]}` : null;
+        if (sym && !seen.has(sym.toUpperCase())) {
+          seen.add(sym.toUpperCase());
+          results.push({ symbol: sym.toUpperCase(), description: x.name || x.code || ('EODHD: ' + sym) });
         }
       });
     }
@@ -578,21 +781,30 @@ function initAnalyticsPanel() {
   renderIndustryList(INDUSTRY_DEMO);
   // Top movers via Massive snapshot
   if (typeof MASSIVE_KEY !== 'undefined' && MASSIVE_KEY) fetchMassiveSnapshot();
+  // Order book
+  initOrderBookTabs();
+  startOBAutoRefresh();
 }
 
 async function fetchAssetClassesLive() {
+  // Live % from Finnhub only (one batch — sector heatmap uses Finnhub too, so we keep quotes here)
   const results = await Promise.allSettled(
     ASSET_PROXIES.map(a =>
       fetch(`${FH}/quote?symbol=${encodeURIComponent(a.sym)}&token=${KEY}`).then(r => r.json())
     )
   );
-  const items = ASSET_PROXIES.map((a, i) => {
+  let items = ASSET_PROXIES.map((a, i) => {
     const r = results[i];
     if (r.status === 'fulfilled' && r.value && typeof r.value.dp === 'number') {
       return { ...a, pct: r.value.dp, price: r.value.c };
     }
     return { ...a, pct: 0, price: null };
   });
+  // Historical % from EODHD (cached — spreads usage)
+  if (typeof EODHD_KEY !== 'undefined' && EODHD_KEY && typeof getEODHDHistoricalPct === 'function') {
+    const h = await Promise.all(items.map(a => getEODHDHistoricalPct(a.etf || a.sym)));
+    items = items.map((a, i) => ({ ...a, hist: h[i] || null }));
+  }
   renderAssetClasses(items);
 }
 
@@ -640,8 +852,14 @@ function renderAssetClasses(data) {
   el.innerHTML = data.map(a => {
     const cls = pctClass(a.pct);
     const priceStr = a.price != null ? `<span style="font-size:9px;color:var(--dim);margin-left:auto">$${a.price.toFixed(2)}</span>` : '';
+    const histStr = a.hist && (a.hist.chg1M != null || a.hist.chgYTD != null)
+      ? ['1M', 'YTD'].map(l => {
+          const v = l === '1M' ? a.hist.chg1M : a.hist.chgYTD;
+          return v != null ? `${l} ${v >= 0 ? '+' : ''}${v.toFixed(1)}%` : null;
+        }).filter(Boolean).join(' · ')
+      : '';
     return `<div class="asset-item ${cls}" title="${a.name}: ${a.pct >= 0 ? '+' : ''}${a.pct.toFixed(2)}%">
-      <span class="name">${a.name}<span style="display:block;font-size:8px;opacity:.5">${a.etf||''}</span></span>
+      <span class="name">${a.name}<span style="display:block;font-size:8px;opacity:.5">${a.etf||''}</span>${histStr ? `<span style="display:block;font-size:8px;color:var(--dim);margin-top:1px">${histStr}</span>` : ''}</span>
       ${priceStr}
       <span class="pct ${a.pct >= 0 ? 'up' : 'dn'}" style="min-width:52px;text-align:right">${a.pct >= 0 ? '+' : ''}${a.pct.toFixed(2)}%</span>
     </div>`;
@@ -658,4 +876,379 @@ function renderIndustryList(data) {
       <span class="val ${a.pct >= 0 ? 'up' : 'dn'}">${a.pct >= 0 ? '+' : ''}${a.pct.toFixed(2)}%</span>
     </div>`;
   }).join('');
+}
+
+// ── ORDER BOOK ──────────────────────────────────────────────────────
+window._obPair = 'BTCUSDT';
+window._obTimer = null;
+
+const BINANCE_DEPTH = 'https://api.binance.com/api/v3/depth';
+const BINANCE_TICKER = 'https://api.binance.com/api/v3/ticker/24hr';
+
+function initOrderBookTabs() {
+  document.querySelectorAll('.ob-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.ob-tab').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      const pair = btn.getAttribute('data-ob');
+      _obPair = pair;
+      fetchAndRenderOB();
+    });
+  });
+}
+
+function symToBinancePair(sym) {
+  if (!sym) return null;
+  sym = sym.toUpperCase();
+  if (sym === 'BTC' || sym === 'BTCUSDT' || sym === 'BTCUSD') return 'BTCUSDT';
+  if (sym === 'ETH' || sym === 'ETHUSDT' || sym === 'ETHUSD') return 'ETHUSDT';
+  if (sym === 'SOL' || sym === 'SOLUSDT') return 'SOLUSDT';
+  if (sym === 'DOGE' || sym === 'DOGEUSDT') return 'DOGEUSDT';
+  if (sym === 'XRP' || sym === 'XRPUSDT') return 'XRPUSDT';
+  if (sym === 'ADA' || sym === 'ADAUSDT') return 'ADAUSDT';
+  if (sym === 'BNB' || sym === 'BNBUSDT') return 'BNBUSDT';
+  if (sym.endsWith('USDT')) return sym;
+  return null;
+}
+
+async function fetchBinanceDepth(pair, limit) {
+  limit = limit || 20;
+  try {
+    const r = await fetch(`${BINANCE_DEPTH}?symbol=${pair}&limit=${limit}`);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+}
+
+async function fetchBinanceTicker(pair) {
+  try {
+    const r = await fetch(`${BINANCE_TICKER}?symbol=${pair}`);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+}
+
+async function fetchFinnhubSpread(sym) {
+  if (!KEY || !sym) return null;
+  const ns = normSym(sym);
+  try {
+    const r = await fetch(`${FH}/quote?symbol=${encodeURIComponent(ns.finnhub)}&token=${KEY}`);
+    const j = await r.json().catch(() => ({}));
+    if (j && typeof j.c === 'number') {
+      return {
+        bid: typeof j.b === 'number' ? j.b : null,
+        ask: typeof j.a === 'number' ? j.a : null,
+        last: j.c,
+        high: j.h,
+        low: j.l,
+        open: j.o,
+        prevClose: j.pc,
+        changePct: j.dp
+      };
+    }
+    return null;
+  } catch (e) { return null; }
+}
+
+async function fetchAndRenderOB() {
+  const pair = _obPair;
+  const statsEl = document.getElementById('ob-stats');
+  const bidEl = document.getElementById('ob-bid-rows');
+  const askEl = document.getElementById('ob-ask-rows');
+  if (!statsEl) return;
+
+  if (pair === 'CURRENT') {
+    const sym = typeof curSym !== 'undefined' ? curSym : '';
+    const binancePair = symToBinancePair(sym);
+    if (binancePair) {
+      await renderCryptoOB(binancePair);
+    } else if (sym) {
+      await renderStockSpread(sym);
+    } else {
+      statsEl.innerHTML = '<div class="ob-note">Select a symbol to view spread data</div>';
+      bidEl.innerHTML = '';
+      askEl.innerHTML = '';
+      clearDepthCanvas();
+    }
+  } else {
+    await renderCryptoOB(pair);
+  }
+}
+
+async function renderCryptoOB(pair) {
+  const statsEl = document.getElementById('ob-stats');
+  const bidEl = document.getElementById('ob-bid-rows');
+  const askEl = document.getElementById('ob-ask-rows');
+
+  statsEl.innerHTML = '<span class="ob-note">Loading…</span>';
+
+  const [depth, ticker] = await Promise.all([
+    fetchBinanceDepth(pair, 20),
+    fetchBinanceTicker(pair)
+  ]);
+
+  if (!depth || !depth.bids || !depth.asks) {
+    statsEl.innerHTML = '<span class="ob-note">Order book unavailable for this pair</span>';
+    bidEl.innerHTML = '';
+    askEl.innerHTML = '';
+    clearDepthCanvas();
+    return;
+  }
+
+  const bids = depth.bids.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+  const asks = depth.asks.map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+
+  const bestBid = bids[0] ? bids[0][0] : 0;
+  const bestAsk = asks[0] ? asks[0][0] : 0;
+  const spread = bestAsk - bestBid;
+  const spreadPct = bestBid > 0 ? (spread / bestBid * 100) : 0;
+  const midPrice = (bestBid + bestAsk) / 2;
+  const totalBidVol = bids.reduce((s, b) => s + b[1], 0);
+  const totalAskVol = asks.reduce((s, a) => s + a[1], 0);
+  const imbalance = (totalBidVol + totalAskVol) > 0
+    ? ((totalBidVol - totalAskVol) / (totalBidVol + totalAskVol) * 100) : 0;
+
+  const priceFmt = midPrice >= 100 ? 2 : midPrice >= 1 ? 4 : 6;
+  const label = pair.replace('USDT', '/USDT');
+
+  let volStr = '';
+  if (ticker && ticker.quoteVolume) {
+    const qv = parseFloat(ticker.quoteVolume);
+    volStr = qv >= 1e9 ? (qv / 1e9).toFixed(1) + 'B' : qv >= 1e6 ? (qv / 1e6).toFixed(1) + 'M' : qv.toFixed(0);
+  }
+
+  statsEl.innerHTML = `
+    <div class="ob-stat"><span class="ob-stat-label">Pair</span><span class="ob-stat-val">${label}</span></div>
+    <div class="ob-stat"><span class="ob-stat-label">Mid</span><span class="ob-stat-val">$${midPrice.toFixed(priceFmt)}</span></div>
+    <div class="ob-stat"><span class="ob-stat-label">Spread</span><span class="ob-stat-val">${spreadPct.toFixed(4)}%</span></div>
+    <div class="ob-stat"><span class="ob-stat-label">Bid Vol</span><span class="ob-stat-val up">${totalBidVol.toFixed(2)}</span></div>
+    <div class="ob-stat"><span class="ob-stat-label">Ask Vol</span><span class="ob-stat-val dn">${totalAskVol.toFixed(2)}</span></div>
+    <div class="ob-stat"><span class="ob-stat-label">Imbalance</span><span class="ob-stat-val ${imbalance >= 0 ? 'up' : 'dn'}">${imbalance >= 0 ? '+' : ''}${imbalance.toFixed(1)}%</span></div>
+    ${volStr ? `<div class="ob-stat"><span class="ob-stat-label">24h Vol</span><span class="ob-stat-val">$${volStr}</span></div>` : ''}
+  `;
+
+  renderOBRows(bids, asks, priceFmt);
+  drawDepthChart(bids, asks);
+}
+
+async function renderStockSpread(sym) {
+  const statsEl = document.getElementById('ob-stats');
+  const bidEl = document.getElementById('ob-bid-rows');
+  const askEl = document.getElementById('ob-ask-rows');
+
+  statsEl.innerHTML = '<span class="ob-note">Loading…</span>';
+
+  const q = await fetchFinnhubSpread(sym);
+  if (!q) {
+    statsEl.innerHTML = '<span class="ob-note">No spread data available for ' + esc(sym) + '</span>';
+    bidEl.innerHTML = '';
+    askEl.innerHTML = '';
+    clearDepthCanvas();
+    return;
+  }
+
+  const bid = q.bid, ask = q.ask, last = q.last;
+  const hasBidAsk = bid != null && ask != null && bid > 0 && ask > 0;
+  const spread = hasBidAsk ? (ask - bid) : 0;
+  const spreadPct = hasBidAsk ? (spread / bid * 100) : 0;
+  const mid = hasBidAsk ? (bid + ask) / 2 : last;
+  const chgStr = q.changePct != null ? `${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%` : '—';
+
+  statsEl.innerHTML = `
+    <div class="ob-stat"><span class="ob-stat-label">Symbol</span><span class="ob-stat-val">${esc(sym)}</span></div>
+    <div class="ob-stat"><span class="ob-stat-label">Last</span><span class="ob-stat-val">$${last.toFixed(2)}</span></div>
+    ${hasBidAsk ? `
+      <div class="ob-stat"><span class="ob-stat-label">Bid</span><span class="ob-stat-val up">$${bid.toFixed(2)}</span></div>
+      <div class="ob-stat"><span class="ob-stat-label">Ask</span><span class="ob-stat-val dn">$${ask.toFixed(2)}</span></div>
+      <div class="ob-stat"><span class="ob-stat-label">Spread</span><span class="ob-stat-val">${spreadPct.toFixed(3)}%</span></div>
+    ` : ''}
+    <div class="ob-stat"><span class="ob-stat-label">Change</span><span class="ob-stat-val ${q.changePct >= 0 ? 'up' : 'dn'}">${chgStr}</span></div>
+    <div class="ob-stat"><span class="ob-stat-label">High</span><span class="ob-stat-val">$${(q.high||0).toFixed(2)}</span></div>
+    <div class="ob-stat"><span class="ob-stat-label">Low</span><span class="ob-stat-val">$${(q.low||0).toFixed(2)}</span></div>
+  `;
+
+  bidEl.innerHTML = '<div class="ob-note">Full order book depth requires Level 2 market data (paid feed). Bid/ask spread shown above from Finnhub quote.</div>';
+  askEl.innerHTML = '';
+  clearDepthCanvas();
+}
+
+function renderOBRows(bids, asks, priceFmt) {
+  const bidEl = document.getElementById('ob-bid-rows');
+  const askEl = document.getElementById('ob-ask-rows');
+  if (!bidEl || !askEl) return;
+
+  const maxBidQ = Math.max(...bids.map(b => b[1]), 0.001);
+  const maxAskQ = Math.max(...asks.map(a => a[1]), 0.001);
+
+  let cumBid = 0;
+  bidEl.innerHTML = bids.map(([p, q]) => {
+    cumBid += q;
+    const pct = (q / maxBidQ * 100).toFixed(0);
+    return `<div class="ob-row">
+      <div class="ob-row-bar" style="width:${pct}%"></div>
+      <span class="ob-price">${p.toFixed(priceFmt)}</span>
+      <span class="ob-qty">${fmtOBQty(q)}</span>
+      <span class="ob-total">${fmtOBQty(cumBid)}</span>
+    </div>`;
+  }).join('');
+
+  let cumAsk = 0;
+  askEl.innerHTML = asks.map(([p, q]) => {
+    cumAsk += q;
+    const pct = (q / maxAskQ * 100).toFixed(0);
+    return `<div class="ob-row">
+      <div class="ob-row-bar" style="width:${pct}%"></div>
+      <span class="ob-price">${p.toFixed(priceFmt)}</span>
+      <span class="ob-qty">${fmtOBQty(q)}</span>
+      <span class="ob-total">${fmtOBQty(cumAsk)}</span>
+    </div>`;
+  }).join('');
+}
+
+function fmtOBQty(q) {
+  if (q >= 1000) return (q / 1000).toFixed(1) + 'K';
+  if (q >= 1) return q.toFixed(2);
+  return q.toFixed(4);
+}
+
+function clearDepthCanvas() {
+  const c = document.getElementById('ob-depth-canvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+}
+
+function drawDepthChart(bids, asks) {
+  const canvas = document.getElementById('ob-depth-canvas');
+  if (!canvas) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width;
+  const H = rect.height;
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (!bids.length && !asks.length) return;
+
+  const cumBids = [];
+  let cb = 0;
+  for (let i = 0; i < bids.length; i++) {
+    cb += bids[i][1];
+    cumBids.push([bids[i][0], cb]);
+  }
+
+  const cumAsks = [];
+  let ca = 0;
+  for (let i = 0; i < asks.length; i++) {
+    ca += asks[i][1];
+    cumAsks.push([asks[i][0], ca]);
+  }
+
+  const allPrices = [...cumBids.map(b => b[0]), ...cumAsks.map(a => a[0])];
+  const minP = Math.min(...allPrices);
+  const maxP = Math.max(...allPrices);
+  const priceRange = maxP - minP || 1;
+  const maxVol = Math.max(cb, ca, 0.001);
+
+  const pad = { top: 10, bottom: 20, left: 10, right: 10 };
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  function px(price) { return pad.left + ((price - minP) / priceRange) * cW; }
+  function py(vol) { return pad.top + cH - (vol / maxVol) * cH; }
+
+  // Bid fill
+  ctx.beginPath();
+  ctx.moveTo(px(cumBids[cumBids.length - 1][0]), py(0));
+  for (let i = cumBids.length - 1; i >= 0; i--) {
+    ctx.lineTo(px(cumBids[i][0]), py(cumBids[i][1]));
+    if (i > 0) ctx.lineTo(px(cumBids[i - 1][0]), py(cumBids[i][1]));
+  }
+  ctx.lineTo(px(cumBids[0][0]), py(0));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(40, 200, 100, 0.15)';
+  ctx.fill();
+
+  // Bid line
+  ctx.beginPath();
+  for (let i = cumBids.length - 1; i >= 0; i--) {
+    const x = px(cumBids[i][0]), y = py(cumBids[i][1]);
+    if (i === cumBids.length - 1) ctx.moveTo(x, y);
+    else { ctx.lineTo(x, y); if (i > 0) ctx.lineTo(px(cumBids[i - 1][0]), py(cumBids[i][1])); }
+  }
+  ctx.strokeStyle = 'rgba(40, 200, 100, 0.8)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Ask fill
+  ctx.beginPath();
+  ctx.moveTo(px(cumAsks[0][0]), py(0));
+  for (let i = 0; i < cumAsks.length; i++) {
+    ctx.lineTo(px(cumAsks[i][0]), py(cumAsks[i][1]));
+    if (i < cumAsks.length - 1) ctx.lineTo(px(cumAsks[i + 1][0]), py(cumAsks[i][1]));
+  }
+  ctx.lineTo(px(cumAsks[cumAsks.length - 1][0]), py(0));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255, 60, 60, 0.15)';
+  ctx.fill();
+
+  // Ask line
+  ctx.beginPath();
+  for (let i = 0; i < cumAsks.length; i++) {
+    const x = px(cumAsks[i][0]), y = py(cumAsks[i][1]);
+    if (i === 0) ctx.moveTo(x, y);
+    else { ctx.lineTo(x, y); }
+    if (i < cumAsks.length - 1) ctx.lineTo(px(cumAsks[i + 1][0]), py(cumAsks[i][1]));
+  }
+  ctx.strokeStyle = 'rgba(255, 60, 60, 0.8)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Mid-price line
+  const midP = (cumBids[0][0] + cumAsks[0][0]) / 2;
+  ctx.beginPath();
+  ctx.moveTo(px(midP), pad.top);
+  ctx.lineTo(px(midP), pad.top + cH);
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Price axis labels
+  ctx.font = '9px "IBM Plex Mono", monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.textAlign = 'left';
+  const pFmt = midP >= 100 ? 0 : midP >= 1 ? 2 : 4;
+  ctx.fillText('$' + minP.toFixed(pFmt), pad.left, H - 4);
+  ctx.textAlign = 'right';
+  ctx.fillText('$' + maxP.toFixed(pFmt), W - pad.right, H - 4);
+  ctx.textAlign = 'center';
+  ctx.fillText('$' + midP.toFixed(pFmt), px(midP), H - 4);
+
+  // Volume axis labels
+  ctx.textAlign = 'left';
+  ctx.fillText(fmtOBQty(maxVol), pad.left + 2, pad.top + 10);
+}
+
+function startOBAutoRefresh() {
+  stopOBAutoRefresh();
+  fetchAndRenderOB();
+  _obTimer = setInterval(fetchAndRenderOB, 12000);
+}
+
+function stopOBAutoRefresh() {
+  if (_obTimer) { clearInterval(_obTimer); _obTimer = null; }
+}
+
+function refreshOBForSymbol() {
+  const curTab = document.querySelector('.ob-tab[data-ob="CURRENT"]');
+  if (curTab && curTab.classList.contains('on')) {
+    fetchAndRenderOB();
+  }
 }

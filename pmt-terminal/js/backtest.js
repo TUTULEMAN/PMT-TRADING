@@ -225,7 +225,7 @@ async function runBacktest() {
       console.log(`[Backtest] Using live chart data: ${data.length} bars`);
     }
 
-    // 2) Try Massive history FIRST (most reliable with paid key)
+    // 2) Try Massive history (prev-day + historical bars — one provider for stocks)
     if (!data || data.length < 30) {
       if (typeof fetchMassiveHistory === 'function' && typeof MASSIVE_KEY !== 'undefined' && MASSIVE_KEY) {
         st.textContent = 'Fetching history from Massive…';
@@ -241,7 +241,23 @@ async function runBacktest() {
       }
     }
 
-    // 3) Try Finnhub historical candles as fallback
+    // 3) Try EODHD historical EOD (spreads usage vs Finnhub)
+    if (!data || data.length < 30) {
+      if (typeof fetchEODHDHistory === 'function' && typeof EODHD_KEY !== 'undefined' && EODHD_KEY) {
+        st.textContent = 'Fetching history from EODHD…';
+        console.log(`[Backtest] Trying EODHD history for ${sym}…`);
+        const eodData = await fetchEODHDHistory(sym, 365);
+        if (eodData && eodData.length >= 30) {
+          data = eodData;
+          dataSrcLabel = 'EODHD History';
+          console.log(`[Backtest] EODHD returned ${data.length} bars`);
+        } else {
+          console.log(`[Backtest] EODHD returned insufficient data: ${eodData ? eodData.length : 0} bars`);
+        }
+      }
+    }
+
+    // 4) Try Finnhub historical candles as fallback
     if (!data || data.length < 30) {
       if (typeof fetchFinnhubCandles === 'function' && typeof KEY !== 'undefined' && KEY) {
         st.textContent = 'Fetching candles from Finnhub…';
@@ -257,7 +273,7 @@ async function runBacktest() {
       }
     }
 
-    // 4) Still no data — error
+    // 5) Still no data — error
     if (!data || data.length < 30) {
       console.error(`[Backtest] All data sources failed for ${sym}`);
       st.textContent = '⚠ Not enough data for ' + sym + '. Need 30+ bars. Check your API keys (F12 console for details).';
