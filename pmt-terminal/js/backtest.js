@@ -38,41 +38,59 @@ function preInd(data) {
   const cl = data.map(d => d.close), n = data.length;
   const ind = Array.from({ length: n }, () => ({}));
 
-  // RSI(14)
-  let ag = 0, al = 0;
-  for (let i = 1; i <= 14; i++) {
-    const d = cl[i] - cl[i-1];
-    if (d > 0) ag += d; else al -= d;
+  // SMA helpers (for custom scripts)
+  if (n >= 5) {
+    let sum5 = 0;
+    for (let i = 0; i < 5; i++) sum5 += cl[i];
+    ind[4].sma5 = sum5 / 5;
+    for (let i = 5; i < n; i++) { sum5 += cl[i] - cl[i - 5]; ind[i].sma5 = sum5 / 5; }
   }
-  ag /= 14; al /= 14;
-  ind[14].rsi14 = al === 0 ? 100 : 100 - 100/(1 + ag/al);
-  for (let i = 15; i < n; i++) {
-    const d = cl[i] - cl[i-1];
-    ag = (ag*13 + (d > 0 ? d : 0)) / 14;
-    al = (al*13 + (d < 0 ? -d : 0)) / 14;
-    ind[i].rsi14 = al === 0 ? 100 : 100 - 100/(1 + ag/al);
+  if (n >= 10) {
+    let sum10 = 0;
+    for (let i = 0; i < 10; i++) sum10 += cl[i];
+    ind[9].sma10 = sum10 / 10;
+    for (let i = 10; i < n; i++) { sum10 += cl[i] - cl[i - 10]; ind[i].sma10 = sum10 / 10; }
   }
 
-  // MACD(12,26,9)
-  const eArr = p => {
-    const m = 2/(p+1), r = new Array(n).fill(null); let s = 0;
-    for (let i = 0; i < p && i < n; i++) s += cl[i];
-    r[p-1] = s/p;
-    for (let i = p; i < n; i++) r[i] = cl[i]*m + r[i-1]*(1-m);
-    return r;
-  };
-  const f12 = eArr(12), s26 = eArr(26);
-  const mv = new Array(n).fill(null), sa = new Array(n).fill(null);
-  for (let i = 0; i < n; i++) if (f12[i] !== null && s26[i] !== null) mv[i] = f12[i] - s26[i];
-  const sk = 2/10; let sc = 0, ss2 = 0;
-  for (let i = 0; i < n; i++) {
-    if (mv[i] === null) continue;
-    if (sc < 9) { ss2 += mv[i]; sc++; if (sc === 9) sa[i] = ss2/9; }
-    else sa[i] = mv[i]*sk + sa[i-1]*(1-sk);
+  // RSI(14) — needs at least 15 bars
+  if (n >= 15) {
+    let ag = 0, al = 0;
+    for (let i = 1; i <= 14; i++) {
+      const d = cl[i] - cl[i-1];
+      if (d > 0) ag += d; else al -= d;
+    }
+    ag /= 14; al /= 14;
+    ind[14].rsi14 = al === 0 ? 100 : 100 - 100/(1 + ag/al);
+    for (let i = 15; i < n; i++) {
+      const d = cl[i] - cl[i-1];
+      ag = (ag*13 + (d > 0 ? d : 0)) / 14;
+      al = (al*13 + (d < 0 ? -d : 0)) / 14;
+      ind[i].rsi14 = al === 0 ? 100 : 100 - 100/(1 + ag/al);
+    }
   }
-  for (let i = 0; i < n; i++) {
-    if (mv[i] !== null) ind[i].macd = mv[i];
-    if (sa[i] !== null) ind[i].macdSignal = sa[i];
+
+  // MACD(12,26,9) — needs at least 35 bars to produce signal line
+  if (n >= 26) {
+    const eArr = p => {
+      const m = 2/(p+1), r = new Array(n).fill(null); let s = 0;
+      for (let i = 0; i < p; i++) s += cl[i];
+      r[p-1] = s/p;
+      for (let i = p; i < n; i++) r[i] = cl[i]*m + r[i-1]*(1-m);
+      return r;
+    };
+    const f12 = eArr(12), s26 = eArr(26);
+    const mv = new Array(n).fill(null), sa = new Array(n).fill(null);
+    for (let i = 0; i < n; i++) if (f12[i] !== null && s26[i] !== null) mv[i] = f12[i] - s26[i];
+    const sk = 2/10; let sc = 0, ss2 = 0;
+    for (let i = 0; i < n; i++) {
+      if (mv[i] === null) continue;
+      if (sc < 9) { ss2 += mv[i]; sc++; if (sc === 9) sa[i] = ss2/9; }
+      else sa[i] = mv[i]*sk + sa[i-1]*(1-sk);
+    }
+    for (let i = 0; i < n; i++) {
+      if (mv[i] !== null) ind[i].macd = mv[i];
+      if (sa[i] !== null) ind[i].macdSignal = sa[i];
+    }
   }
   return ind;
 }
@@ -217,66 +235,78 @@ async function runBacktest() {
     let data, dataSrcLabel = 'Unknown';
     console.log(`[Backtest] Starting data fetch for ${sym}`);
 
+    const MIN_BARS = 15;
+    const HIST_DAYS = 90;
+    const delay = ms => new Promise(r => setTimeout(r, ms));
+
     // 1) If the symbol is already loaded in the chart with enough bars, use that
-    if (typeof rawData !== 'undefined' && rawData && rawData.length >= 30 && curSym === sym) {
+    if (typeof rawData !== 'undefined' && rawData && rawData.length >= MIN_BARS && curSym === sym) {
       data = rawData.slice();
       dataSrcLabel = 'Live';
       st.textContent = 'Using live data…';
       console.log(`[Backtest] Using live chart data: ${data.length} bars`);
     }
 
-    // 2) Try Massive history (prev-day + historical bars — one provider for stocks)
-    if (!data || data.length < 30) {
-      if (typeof fetchMassiveHistory === 'function' && typeof MASSIVE_KEY !== 'undefined' && MASSIVE_KEY) {
-        st.textContent = 'Fetching history from Massive…';
-        console.log(`[Backtest] Trying Massive history for ${sym}…`);
-        const mvData = await fetchMassiveHistory(sym, 365);
-        if (mvData && mvData.length >= 30) {
-          data = mvData;
-          dataSrcLabel = 'Massive History';
-          console.log(`[Backtest] Massive returned ${data.length} bars`);
-        } else {
-          console.log(`[Backtest] Massive returned insufficient data: ${mvData ? mvData.length : 0} bars`);
-        }
-      }
-    }
-
-    // 3) Try EODHD historical EOD (spreads usage vs Finnhub)
-    if (!data || data.length < 30) {
+    // 2) Try EODHD first (most reliable for free-tier historical EOD)
+    if (!data || data.length < MIN_BARS) {
       if (typeof fetchEODHDHistory === 'function' && typeof EODHD_KEY !== 'undefined' && EODHD_KEY) {
         st.textContent = 'Fetching history from EODHD…';
         console.log(`[Backtest] Trying EODHD history for ${sym}…`);
-        const eodData = await fetchEODHDHistory(sym, 365);
-        if (eodData && eodData.length >= 30) {
-          data = eodData;
-          dataSrcLabel = 'EODHD History';
-          console.log(`[Backtest] EODHD returned ${data.length} bars`);
-        } else {
-          console.log(`[Backtest] EODHD returned insufficient data: ${eodData ? eodData.length : 0} bars`);
-        }
+        try {
+          const eodData = await fetchEODHDHistory(sym, HIST_DAYS);
+          if (eodData && eodData.length >= MIN_BARS) {
+            data = eodData;
+            dataSrcLabel = 'EODHD History';
+            console.log(`[Backtest] EODHD returned ${data.length} bars`);
+          } else {
+            console.log(`[Backtest] EODHD returned insufficient data: ${eodData ? eodData.length : 0} bars`);
+          }
+        } catch (e) { console.warn('[Backtest] EODHD error:', e.message); }
       }
     }
 
-    // 4) Try Finnhub historical candles as fallback
-    if (!data || data.length < 30) {
+    // 3) Try Massive history
+    if (!data || data.length < MIN_BARS) {
+      await delay(300);
+      if (typeof fetchMassiveHistory === 'function' && typeof MASSIVE_KEY !== 'undefined' && MASSIVE_KEY) {
+        st.textContent = 'Fetching history from Massive…';
+        console.log(`[Backtest] Trying Massive history for ${sym}…`);
+        try {
+          const mvData = await fetchMassiveHistory(sym, HIST_DAYS);
+          if (mvData && mvData.length >= MIN_BARS) {
+            data = mvData;
+            dataSrcLabel = 'Massive History';
+            console.log(`[Backtest] Massive returned ${data.length} bars`);
+          } else {
+            console.log(`[Backtest] Massive returned insufficient data: ${mvData ? mvData.length : 0} bars`);
+          }
+        } catch (e) { console.warn('[Backtest] Massive error:', e.message); }
+      }
+    }
+
+    // 4) Try Finnhub historical candles as last resort
+    if (!data || data.length < MIN_BARS) {
+      await delay(300);
       if (typeof fetchFinnhubCandles === 'function' && typeof KEY !== 'undefined' && KEY) {
         st.textContent = 'Fetching candles from Finnhub…';
         console.log(`[Backtest] Trying Finnhub candles for ${sym}…`);
-        const fhData = await fetchFinnhubCandles(sym, 365);
-        if (fhData && fhData.length >= 30) {
-          data = fhData;
-          dataSrcLabel = 'Finnhub Daily';
-          console.log(`[Backtest] Finnhub returned ${data.length} bars`);
-        } else {
-          console.log(`[Backtest] Finnhub returned insufficient data: ${fhData ? fhData.length : 0} bars`);
-        }
+        try {
+          const fhData = await fetchFinnhubCandles(sym, HIST_DAYS);
+          if (fhData && fhData.length >= MIN_BARS) {
+            data = fhData;
+            dataSrcLabel = 'Finnhub Daily';
+            console.log(`[Backtest] Finnhub returned ${data.length} bars`);
+          } else {
+            console.log(`[Backtest] Finnhub returned insufficient data: ${fhData ? fhData.length : 0} bars`);
+          }
+        } catch (e) { console.warn('[Backtest] Finnhub error:', e.message); }
       }
     }
 
-    // 5) Still no data — error
-    if (!data || data.length < 30) {
+    // 5) Still no data — error with actionable guidance
+    if (!data || data.length < MIN_BARS) {
       console.error(`[Backtest] All data sources failed for ${sym}`);
-      st.textContent = '⚠ Not enough data for ' + sym + '. Need 30+ bars. Check your API keys (F12 console for details).';
+      st.textContent = `⚠ Not enough data for ${sym}. APIs may be rate-limited — wait 30s and retry. Check F12 console.`;
       btn.disabled = false;
       btn.innerHTML = '▶ Run strategy';
       return;

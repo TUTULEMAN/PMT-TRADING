@@ -13,26 +13,6 @@ function initCharts() {
   document.getElementById('ce')?.remove();
   mc = LightweightCharts.createChart(me, { ...CO, width: me.clientWidth, height: me.clientHeight });
 
-  const re = document.getElementById('rp');
-  rc2 = LightweightCharts.createChart(re, {
-    ...CO, width: re.clientWidth, height: re.clientHeight,
-    rightPriceScale: { borderColor: '#181c24', scaleMargins: { top: .1, bottom: .1 } },
-    timeScale: { visible: false, borderColor: '#181c24' }
-  });
-
-  const mae = document.getElementById('macp');
-  macc = LightweightCharts.createChart(mae, {
-    ...CO, width: mae.clientWidth, height: mae.clientHeight,
-    timeScale: { visible: false, borderColor: '#181c24' }
-  });
-
-  // Sync sub-charts with main time range
-  mc.timeScale().subscribeVisibleLogicalRangeChange(r => {
-    if (!r) return;
-    rc2?.timeScale().setVisibleLogicalRange(r);
-    macc?.timeScale().setVisibleLogicalRange(r);
-  });
-
   // Crosshair price display
   mc.subscribeCrosshairMove(p => {
     if (!p.time || !ms) return;
@@ -118,42 +98,42 @@ function appendRealtimePoint(time, price, volume) {
 function tind(n) {
   inds[n] = !inds[n];
   document.getElementById('i-' + n).classList.toggle('ion', inds[n]);
-  if (n === 'rsi')  { document.getElementById('rp').style.display   = inds.rsi  ? 'block' : 'none'; resizeCharts(); }
-  if (n === 'macd') { document.getElementById('macp').style.display = inds.macd ? 'block' : 'none'; resizeCharts(); }
   ri();
 }
 
-// ── REBUILD INDICATORS ───────────────
+// ── REBUILD INDICATORS (overlaid on main chart) ───────────────
 function ri() {
   if (!mc || !rawData.length) return;
-  if (rsiS)  { try { rc2.removeSeries(rsiS); rc2.removeSeries(rsiOB2); rc2.removeSeries(rsiOS2); } catch (e) {} }
+  if (rsiS)  { try { mc.removeSeries(rsiS); mc.removeSeries(rsiOB2); mc.removeSeries(rsiOS2); } catch (e) {} }
   rsiS = rsiOB2 = rsiOS2 = null;
-  if (macdL) { try { macc.removeSeries(macdL); macc.removeSeries(macdSig); macc.removeSeries(macdH2); } catch (e) {} }
+  if (macdL) { try { mc.removeSeries(macdL); mc.removeSeries(macdSig); mc.removeSeries(macdH2); } catch (e) {} }
   macdL = macdSig = macdH2 = null;
 
-  if (inds.rsi && rc2) {
+  if (inds.rsi) {
     const d = cRSI(rawData, +document.getElementById('rp2').value);
     if (d.length) {
-      rsiS   = rc2.addLineSeries({ color: '#b490ff', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true });
-      rsiOB2 = rc2.addLineSeries({ color: '#ff3d5a28', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-      rsiOS2 = rc2.addLineSeries({ color: '#00e5a028', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+      const rsiScale = { priceScaleId: 'rsi-scale' };
+      rsiS   = mc.addLineSeries({ ...rsiScale, color: '#b490ff', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true });
+      rsiOB2 = mc.addLineSeries({ ...rsiScale, color: 'rgba(255,61,90,0.25)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+      rsiOS2 = mc.addLineSeries({ ...rsiScale, color: 'rgba(0,229,160,0.25)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
       rsiS.setData(d);
       rsiOB2.setData([{ time: d[0].time, value: 70 }, { time: d[d.length-1].time, value: 70 }]);
       rsiOS2.setData([{ time: d[0].time, value: 30 }, { time: d[d.length-1].time, value: 30 }]);
-      rc2.timeScale().setVisibleLogicalRange(mc.timeScale().getVisibleLogicalRange() || { from: 0, to: d.length });
+      mc.priceScale('rsi-scale').applyOptions({ scaleMargins: { top: 0.7, bottom: 0.02 }, drawTicks: false, borderVisible: false });
     }
   }
 
-  if (inds.macd && macc) {
+  if (inds.macd) {
     const { macd, signal, histogram } = cMACD(rawData);
     if (macd.length) {
-      macdH2 = macc.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
+      const macdScale = { priceScaleId: 'macd-scale' };
+      macdH2 = mc.addHistogramSeries({ ...macdScale, priceLineVisible: false, lastValueVisible: false });
       macdH2.setData(histogram);
-      macdL   = macc.addLineSeries({ color: '#4da6ff', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true });
+      macdL   = mc.addLineSeries({ ...macdScale, color: '#4da6ff', lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true });
       macdL.setData(macd);
-      macdSig = macc.addLineSeries({ color: '#ffb547', lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
+      macdSig = mc.addLineSeries({ ...macdScale, color: '#ffb547', lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
       macdSig.setData(signal);
-      macc.timeScale().setVisibleLogicalRange(mc.timeScale().getVisibleLogicalRange() || { from: 0, to: macd.length });
+      mc.priceScale('macd-scale').applyOptions({ scaleMargins: { top: 0.7, bottom: 0.02 }, drawTicks: false, borderVisible: false });
     }
   }
 }
@@ -361,15 +341,11 @@ function setupResize() {
 function resizeCharts() {
   const ar = document.getElementById('ca');
   if (!mc) return;
-  const rh  = inds.rsi  ? 105 : 0;
-  const mh  = inds.macd ? 105 : 0;
-  const mnh = ar.clientHeight - rh - mh;
-  const w   = ar.clientWidth;
-  mc.applyOptions({ width: w, height: Math.max(80, mnh) });
-  rc2?.applyOptions({ width: w, height: rh || 0 });
-  macc?.applyOptions({ width: w, height: mh || 0 });
+  const w = ar.clientWidth;
+  const h = ar.clientHeight;
+  mc.applyOptions({ width: w, height: Math.max(80, h) });
   const cv = document.getElementById('dc');
-  cv.width = w; cv.height = ar.clientHeight; rd();
+  cv.width = w; cv.height = h; rd();
 }
 
 // ── PRICE BAR ────────────────────────

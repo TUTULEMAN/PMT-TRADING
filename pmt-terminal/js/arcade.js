@@ -16,11 +16,13 @@ const BORED_START_STACK = 1000;
 const BORED_ANTE = 10;
 const BORED_MIN_RAISE = 10;
 const BORED_MAX_RAISE = 200;
-const BORED_TURN_MS = 10000;
+const BORED_TURN_MS = 30000;
 
 window.boredState = {
   players: [],      // { id, name, wins, money, lastHandType, cards:[], strength:[], folded, handContribution }
   community: [],    // 5 board cards
+  revealed: 0,      // how many community cards currently visible (0=preflop, 3=flop, 4=turn, 5=river)
+  street: 'preflop',// 'preflop' | 'flop' | 'turn' | 'river'
   status: 'idle',   // 'idle' | 'dealt'
   phase: 'idle',    // 'idle' | 'yourTurn' | 'bots' | 'showdown'
   resultText: '',
@@ -67,12 +69,24 @@ function showArcadePicker() {
           <div class="arcade-pick-name">Chess</div>
           <div class="arcade-pick-desc">Play as white against a simple AI. Click pieces to move.</div>
         </div>
+        <div class="arcade-pick-card" onclick="switchToSudoku()">
+          <div class="arcade-pick-icon">\u229E 9</div>
+          <div class="arcade-pick-name">Sudoku</div>
+          <div class="arcade-pick-desc">Classic 9\u00D79 logic puzzle. Beginner, intermediate, and hard levels.</div>
+        </div>
+        <div class="arcade-pick-card" onclick="switchToMondrian()">
+          <div class="arcade-pick-icon">\u25AE\u25AC</div>
+          <div class="arcade-pick-name">Mondrian Blocks</div>
+          <div class="arcade-pick-desc">Fill a grid with unique rectangles. Bold colors, minimal score wins.</div>
+        </div>
       </div>
     </div>`;
 }
 
 function switchToPoker() { arcadeGame = 'poker'; initPokerView(); }
 function switchToChess() { arcadeGame = 'chess'; initChessView(); }
+function switchToSudoku() { arcadeGame = 'sudoku'; initSudokuView(); }
+function switchToMondrian() { arcadeGame = 'mondrian'; initMondrianView(); }
 
 function initPokerView() {
   const root = document.getElementById('gv');
@@ -122,7 +136,7 @@ function initPokerView() {
               <div class="arcade-table-placeholder">
                 <div class="arcade-table-logo">PMT</div>
                 <p>We’ll deal you two cards and five community cards.<br>
-                Highest Texas Hold'em hand wins each round.</p>
+                Pre-Flop, Flop, Turn, River, then Showdown.</p>
               </div>
             </div>
           </div>
@@ -191,8 +205,10 @@ function boredDealHand() {
     p.handContribution = 0;
   });
 
-  // Deal 5 community cards
+  // Deal 5 community cards (face-down; revealed progressively)
   boredState.community = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()];
+  boredState.revealed = 0;
+  boredState.street = 'preflop';
   boredState.status = 'dealt';
   boredState.phase = 'yourTurn';
   boredState.handCount += 1;
@@ -217,7 +233,6 @@ function boredDealHand() {
 function boredAct(choice) {
   if (boredState.status !== 'dealt' || boredState.phase !== 'yourTurn') return;
 
-  // Stop turn timer as soon as user acts
   if (boredState.turnTimerId) {
     clearInterval(boredState.turnTimerId);
     boredState.turnTimerId = null;
@@ -240,29 +255,62 @@ function boredAct(choice) {
   boredState.phase = 'bots';
   if (!Array.isArray(boredState.actions)) boredState.actions = [];
 
+  const streetLabel = boredState.street.charAt(0).toUpperCase() + boredState.street.slice(1);
   let youText = '';
   if (choice === 'fold') {
     you.folded = true;
-    youText = 'You fold your hand.';
+    youText = `[${streetLabel}] You fold your hand.`;
   } else if (choice === 'raise') {
-    youText = `You raise the stakes by $${raiseAmt}.`;
+    youText = `[${streetLabel}] You raise by $${raiseAmt}.`;
     if (raiseAmt > 0) {
       you.money -= raiseAmt;
       you.handContribution += raiseAmt;
       boredState.pot += raiseAmt;
     }
   } else {
-    youText = 'You decide to hold / check.';
+    youText = `[${streetLabel}] You check.`;
   }
   boredState.actions.push(youText);
 
-  // Bots act around the table with simple personalities
   boredRunBots(choice, raiseAmt);
 
-  // Go to showdown after this betting round.
-  boredEvaluateHands();
-  boredState.phase = 'showdown';
+  const activePlayers = boredState.players.filter(p => !p.folded && p.money >= 0);
+  if (activePlayers.length <= 1 || you.folded) {
+    boredState.revealed = 5;
+    boredEvaluateHands();
+    boredState.phase = 'showdown';
+    boredRender();
+    return;
+  }
+
+  boredAdvanceStreet();
+}
+
+function boredAdvanceStreet() {
+  const street = boredState.street;
+  if (street === 'preflop') {
+    boredState.street = 'flop';
+    boredState.revealed = 3;
+    boredState.actions.push('── Flop dealt ──');
+  } else if (street === 'flop') {
+    boredState.street = 'turn';
+    boredState.revealed = 4;
+    boredState.actions.push('── Turn dealt ──');
+  } else if (street === 'turn') {
+    boredState.street = 'river';
+    boredState.revealed = 5;
+    boredState.actions.push('── River dealt ──');
+  } else {
+    boredState.revealed = 5;
+    boredEvaluateHands();
+    boredState.phase = 'showdown';
+    boredRender();
+    return;
+  }
+
+  boredState.phase = 'yourTurn';
   boredRender();
+  boredStartTurn();
 }
 
 function boredSetMode(mode) {
@@ -310,9 +358,43 @@ function boredStartTurn() {
 }
 
 function boredHandStrengthForPlayer(p) {
-  const seven = p.cards.concat(boredState.community);
-  const { rankVec } = boredBest5Of7(seven);
+  const visible = boredState.community.slice(0, boredState.revealed);
+  const allCards = p.cards.concat(visible);
+  if (allCards.length < 5) {
+    return boredEstimatePreflop(p.cards);
+  }
+  const { rankVec } = boredBestHand(allCards);
   return rankVec;
+}
+
+function boredEstimatePreflop(holeCards) {
+  const rankVal = c => {
+    const r = c[0];
+    return r === 'A' ? 14 : r === 'K' ? 13 : r === 'Q' ? 12 : r === 'J' ? 11 : r === 'T' ? 10 : parseInt(r, 10);
+  };
+  const v1 = rankVal(holeCards[0]);
+  const v2 = rankVal(holeCards[1]);
+  const paired = v1 === v2;
+  const suited = holeCards[0][1] === holeCards[1][1];
+  let score = Math.max(v1, v2);
+  if (paired) score += 15;
+  if (suited) score += 2;
+  if (Math.abs(v1 - v2) <= 2) score += 1;
+  return [paired ? 1 : 0, score];
+}
+
+function boredBestHand(cards) {
+  if (cards.length === 5) return { rankVec: boredRank5(cards).rankVec, handType: boredRank5(cards).handType };
+  if (cards.length === 6) {
+    let best = null, bestType = 'High Card';
+    for (let skip = 0; skip < 6; skip++) {
+      const hand = cards.filter((_, i) => i !== skip);
+      const { rankVec, handType } = boredRank5(hand);
+      if (!best || boredCompareRankVec(rankVec, best) > 0) { best = rankVec; bestType = handType; }
+    }
+    return { rankVec: best, handType: bestType };
+  }
+  return boredBest5Of7(cards);
 }
 
 function boredRunBots(choice, raiseAmt) {
@@ -651,20 +733,26 @@ function boredRender() {
       <div class="arcade-table-placeholder">
         <div class="arcade-table-logo">PMT</div>
         <p>We’ll deal you two cards and five community cards.<br>
-        Highest hand wins each round.</p>
+        Best 5-card hand at showdown wins the pot.</p>
       </div>`;
     return;
   }
 
+  const streetNames = { preflop: 'Pre-Flop', flop: 'Flop', turn: 'Turn', river: 'River' };
+  const streetLabel = streetNames[boredState.street] || boredState.street;
+
   if (boredState.phase === 'yourTurn') {
-    ts.textContent = `Hand #${boredState.handCount} · Your turn — choose Fold, Hold, or Raise. · Pot: $${boredState.pot}`;
+    ts.textContent = `Hand #${boredState.handCount} · ${streetLabel} · Your turn — Fold, Check, or Raise · Pot: $${boredState.pot}`;
   } else if (boredState.phase === 'showdown') {
-    ts.textContent = `Hand #${boredState.handCount} · ${boredState.resultText} · Pot: $${boredState.pot}`;
+    ts.textContent = `Hand #${boredState.handCount} · Showdown · ${boredState.resultText} · Pot: $${boredState.pot}`;
   } else {
-    ts.textContent = `Hand #${boredState.handCount} · Pot: $${boredState.pot}`;
+    ts.textContent = `Hand #${boredState.handCount} · ${streetLabel} · Pot: $${boredState.pot}`;
   }
 
-  const board = boredState.community.map(c => `<div class="card">${_esc(c)}</div>`).join('');
+  const revealedCards = boredState.community.slice(0, boredState.revealed);
+  const hiddenCount = 5 - boredState.revealed;
+  const board = revealedCards.map(c => `<div class="card">${_esc(c)}</div>`).join('')
+    + Array(hiddenCount).fill('<div class="card hidden">??</div>').join('');
 
   const rows = boredState.players.map(p => {
     const isYou = p.id === 0;
@@ -673,15 +761,7 @@ function boredRender() {
 
     let cardsHtml = '';
     if (isYou) {
-      // Show one card first; reveal second after you act.
-      if (boredState.phase === 'yourTurn' && boredState.status === 'dealt') {
-        const first = p.cards[0];
-        const second = p.cards[1];
-        if (first) cardsHtml += `<div class="card">${_esc(first)}</div>`;
-        if (second) cardsHtml += `<div class="card hidden">??</div>`;
-      } else {
-        cardsHtml = p.cards.map(c => `<div class="card">${_esc(c)}</div>`).join('');
-      }
+      cardsHtml = p.cards.map(c => `<div class="card">${_esc(c)}</div>`).join('');
     } else {
       if (isBeginner || isShowdown) {
         cardsHtml = p.cards.map(c => `<div class="card">${_esc(c)}</div>`).join('');
@@ -703,7 +783,7 @@ function boredRender() {
     ? `<div class="bored-actions">
          <div class="bored-actions-row">
            <button onclick="boredAct('fold')">Fold</button>
-           <button onclick="boredAct('hold')">Hold / Check</button>
+           <button onclick="boredAct('hold')">Check</button>
            <button onclick="boredAct('raise')">Raise</button>
            <input id="bored-raise-amt" class="bored-actions-amount" type="number" min="${BORED_MIN_RAISE}" max="${BORED_MAX_RAISE}" step="${BORED_MIN_RAISE}" value="${BORED_MIN_RAISE}"/>
            <div id="bored-timer" class="bored-timer"></div>
@@ -788,6 +868,476 @@ function boredUpdateGraph() {
       series.setData(data);
     });
   });
+}
+
+// ════════════════════════════════════
+//  SUDOKU — classic 9×9 logic puzzle
+//  Three difficulty levels, runs in-browser
+// ════════════════════════════════════
+
+let sudokuBoard = [];
+let sudokuSolution = [];
+let sudokuGiven = [];
+let sudokuSelected = null;
+let sudokuDifficulty = 'beginner';
+let sudokuTimerId = null;
+let sudokuSeconds = 0;
+
+function initSudokuView() {
+  const root = document.getElementById('gv');
+  if (!root) return;
+
+  root.innerHTML = `
+    <div id="bored-root">
+      <div class="arcade-header">
+        <div class="arcade-title">
+          <span>Are You Bored?</span>
+          <span class="arcade-pill">Sudoku</span>
+          <button class="arcade-back-btn" onclick="showArcadePicker()">\u2190 Back</button>
+        </div>
+        <div class="arcade-sub">Fill every row, column, and 3\u00D73 box with digits 1\u20139. No repeats. Click a cell, then press a number or use the pad.</div>
+      </div>
+      <div class="sudoku-layout">
+        <div class="sudoku-sidebar">
+          <div class="arcade-card">
+            <div class="arcade-card-title">Difficulty</div>
+            <div class="sudoku-diff-btns">
+              <button id="sudoku-diff-beginner" class="on" onclick="sudokuSetDiff('beginner')">Beginner</button>
+              <button id="sudoku-diff-intermediate" onclick="sudokuSetDiff('intermediate')">Intermediate</button>
+              <button id="sudoku-diff-hard" onclick="sudokuSetDiff('hard')">Hard</button>
+            </div>
+            <button class="sudoku-new-btn" onclick="sudokuNewGame()">New puzzle</button>
+            <div id="sudoku-timer" class="sudoku-timer">0:00</div>
+          </div>
+          <div class="arcade-card">
+            <div class="arcade-card-title">Controls</div>
+            <div class="sudoku-numpad" id="sudoku-numpad"></div>
+            <button class="sudoku-erase-btn" onclick="sudokuErase()">Erase</button>
+          </div>
+          <div id="sudoku-msg" class="sudoku-msg"></div>
+        </div>
+        <div class="sudoku-board-wrap">
+          <div id="sudoku-board" class="sudoku-board"></div>
+        </div>
+      </div>
+    </div>`;
+
+  const numpad = document.getElementById('sudoku-numpad');
+  if (numpad) {
+    let html = '';
+    for (let n = 1; n <= 9; n++) html += `<button onclick="sudokuInput(${n})">${n}</button>`;
+    numpad.innerHTML = html;
+  }
+  sudokuNewGame();
+}
+
+function sudokuSetDiff(diff) {
+  sudokuDifficulty = diff;
+  ['beginner', 'intermediate', 'hard'].forEach(d => {
+    const btn = document.getElementById('sudoku-diff-' + d);
+    if (btn) btn.classList.toggle('on', d === diff);
+  });
+}
+
+function sudokuNewGame() {
+  sudokuSelected = null;
+  sudokuSeconds = 0;
+  if (sudokuTimerId) { clearInterval(sudokuTimerId); sudokuTimerId = null; }
+
+  sudokuSolution = sudokuGenerate();
+  const removals = sudokuDifficulty === 'beginner' ? 38
+    : sudokuDifficulty === 'intermediate' ? 48 : 55;
+  sudokuBoard = sudokuSolution.map(row => [...row]);
+  sudokuGiven = Array.from({ length: 9 }, () => Array(9).fill(true));
+
+  const cells = [];
+  for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) cells.push([r, c]);
+  sudokuShuffleArr(cells);
+  let removed = 0;
+  for (const [r, c] of cells) {
+    if (removed >= removals) break;
+    sudokuBoard[r][c] = 0;
+    sudokuGiven[r][c] = false;
+    removed++;
+  }
+
+  sudokuTimerId = setInterval(() => {
+    sudokuSeconds++;
+    const el = document.getElementById('sudoku-timer');
+    if (el) {
+      const m = Math.floor(sudokuSeconds / 60);
+      const s = sudokuSeconds % 60;
+      el.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+    }
+  }, 1000);
+
+  const msg = document.getElementById('sudoku-msg');
+  if (msg) { msg.textContent = ''; msg.className = 'sudoku-msg'; }
+  renderSudokuBoard();
+}
+
+function sudokuGenerate() {
+  const board = Array.from({ length: 9 }, () => Array(9).fill(0));
+  sudokuSolveBoard(board);
+  return board;
+}
+
+function sudokuSolveBoard(board) {
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      if (board[r][c] === 0) {
+        const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        sudokuShuffleArr(nums);
+        for (const n of nums) {
+          if (sudokuIsValid(board, r, c, n)) {
+            board[r][c] = n;
+            if (sudokuSolveBoard(board)) return true;
+            board[r][c] = 0;
+          }
+        }
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function sudokuIsValid(board, row, col, num) {
+  for (let i = 0; i < 9; i++) {
+    if (board[row][i] === num) return false;
+    if (board[i][col] === num) return false;
+  }
+  const br = Math.floor(row / 3) * 3;
+  const bc = Math.floor(col / 3) * 3;
+  for (let r = br; r < br + 3; r++)
+    for (let c = bc; c < bc + 3; c++)
+      if (board[r][c] === num) return false;
+  return true;
+}
+
+function sudokuShuffleArr(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+function sudokuClickCell(r, c) {
+  if (sudokuGiven[r] && sudokuGiven[r][c]) {
+    sudokuSelected = [r, c];
+    renderSudokuBoard();
+    return;
+  }
+  sudokuSelected = [r, c];
+  renderSudokuBoard();
+}
+
+function sudokuInput(n) {
+  if (!sudokuSelected) return;
+  const [r, c] = sudokuSelected;
+  if (sudokuGiven[r][c]) return;
+  sudokuBoard[r][c] = n;
+  renderSudokuBoard();
+  sudokuCheckWin();
+}
+
+function sudokuErase() {
+  if (!sudokuSelected) return;
+  const [r, c] = sudokuSelected;
+  if (sudokuGiven[r][c]) return;
+  sudokuBoard[r][c] = 0;
+  renderSudokuBoard();
+}
+
+function sudokuCheckWin() {
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++)
+      if (sudokuBoard[r][c] !== sudokuSolution[r][c]) return;
+  if (sudokuTimerId) { clearInterval(sudokuTimerId); sudokuTimerId = null; }
+  const msg = document.getElementById('sudoku-msg');
+  if (msg) {
+    const m = Math.floor(sudokuSeconds / 60);
+    const s = sudokuSeconds % 60;
+    msg.textContent = `Puzzle complete! Time: ${m}:${s < 10 ? '0' : ''}${s}`;
+    msg.className = 'sudoku-msg sudoku-win';
+  }
+}
+
+function renderSudokuBoard() {
+  const el = document.getElementById('sudoku-board');
+  if (!el) return;
+  const selR = sudokuSelected ? sudokuSelected[0] : -1;
+  const selC = sudokuSelected ? sudokuSelected[1] : -1;
+  const selVal = (selR >= 0 && selC >= 0) ? sudokuBoard[selR][selC] : 0;
+  const selBoxR = Math.floor(selR / 3) * 3;
+  const selBoxC = Math.floor(selC / 3) * 3;
+
+  let html = '';
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      const val = sudokuBoard[r][c];
+      const isGiven = sudokuGiven[r][c];
+      const isSel = selR === r && selC === c;
+      const isError = val !== 0 && !isGiven && val !== sudokuSolution[r][c];
+      const inRow = selR === r;
+      const inCol = selC === c;
+      const inBox = selR >= 0 && r >= selBoxR && r < selBoxR + 3 && c >= selBoxC && c < selBoxC + 3;
+      const sameNum = val !== 0 && selVal !== 0 && val === selVal && !isSel;
+
+      let cls = 'sudoku-cell';
+      if (isGiven) cls += ' given';
+      if (isSel) cls += ' selected';
+      if (isError) cls += ' error';
+      if (!isSel && (inRow || inCol || inBox)) cls += ' zone';
+      if (sameNum) cls += ' highlight';
+      if (c % 3 === 0 && c !== 0) cls += ' box-left';
+      if (r % 3 === 0 && r !== 0) cls += ' box-top';
+      html += `<div class="${cls}" onclick="sudokuClickCell(${r},${c})">${val || ''}</div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+// ════════════════════════════════════
+//  MONDRIAN BLOCKS — fill a grid with unique rectangles
+//  Inspired by Piet Mondrian's geometric compositions
+// ════════════════════════════════════
+
+const MONDRIAN_SIZE = 8;
+const MONDRIAN_PALETTE = ['#D40920', '#1356A2', '#F7D842', '#F58231', '#3CB44B', '#911EB4', '#42D4F4', '#E6194B', '#BFEF45', '#FABED4'];
+let mondrianGrid = [];
+let mondrianRects = [];
+let mondrianStart = null;
+let mondrianColorIdx = 0;
+
+function initMondrianView() {
+  const root = document.getElementById('gv');
+  if (!root) return;
+
+  mondrianRects = [];
+  mondrianStart = null;
+  mondrianColorIdx = 0;
+  mondrianGrid = Array.from({ length: MONDRIAN_SIZE }, () => Array(MONDRIAN_SIZE).fill(-1));
+
+  root.innerHTML = `
+    <div id="bored-root">
+      <div class="arcade-header">
+        <div class="arcade-title">
+          <span>Are You Bored?</span>
+          <span class="arcade-pill">Mondrian Blocks</span>
+          <button class="arcade-back-btn" onclick="showArcadePicker()">\u2190 Back</button>
+        </div>
+        <div class="arcade-sub">Fill the ${MONDRIAN_SIZE}\u00D7${MONDRIAN_SIZE} grid with rectangles. Click two cells to define opposite corners. No two blocks can share the same dimensions. Most blocks wins!</div>
+      </div>
+      <div class="mondrian-layout">
+        <div class="mondrian-board-wrap">
+          <div id="mondrian-board" class="mondrian-board" style="grid-template-columns:repeat(${MONDRIAN_SIZE},1fr);grid-template-rows:repeat(${MONDRIAN_SIZE},1fr)"></div>
+        </div>
+        <div class="mondrian-sidebar">
+          <div class="arcade-card">
+            <div class="arcade-card-title">Score</div>
+            <div id="mondrian-score" class="mondrian-score">Place rectangles to begin</div>
+            <div id="mondrian-filled" class="mondrian-filled"></div>
+          </div>
+          <div class="arcade-card">
+            <div class="arcade-card-title">Blocks placed</div>
+            <div id="mondrian-blocks" class="mondrian-blocks"></div>
+          </div>
+          <div class="arcade-card">
+            <div class="arcade-card-title">Actions</div>
+            <button class="mondrian-action-btn" onclick="mondrianUndo()">Undo last block</button>
+            <button class="mondrian-action-btn mondrian-reset" onclick="mondrianReset()">Reset board</button>
+          </div>
+          <div class="arcade-card">
+            <div class="arcade-card-title">How to play</div>
+            <div class="arcade-howto">
+              <ol>
+                <li>Click a cell to set the first corner.</li>
+                <li>Click another cell for the opposite corner.</li>
+                <li>Block fills in if no overlap.</li>
+                <li>No two blocks can share dimensions (2\u00D73 = 3\u00D72).</li>
+                <li>Score = number of unique blocks placed. More blocks = higher score!</li>
+              </ol>
+              <p>Press Escape to cancel a selection.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  renderMondrianBoard();
+}
+
+function mondrianClickCell(r, c) {
+  if (mondrianGrid[r][c] !== -1 && !mondrianStart) return;
+
+  if (!mondrianStart) {
+    if (mondrianGrid[r][c] !== -1) return;
+    mondrianStart = [r, c];
+    renderMondrianBoard();
+    return;
+  }
+
+  if (mondrianStart[0] === r && mondrianStart[1] === c) {
+    mondrianStart = null;
+    renderMondrianBoard();
+    return;
+  }
+
+  const r1 = Math.min(mondrianStart[0], r);
+  const c1 = Math.min(mondrianStart[1], c);
+  const r2 = Math.max(mondrianStart[0], r);
+  const c2 = Math.max(mondrianStart[1], c);
+  const w = c2 - c1 + 1;
+  const h = r2 - r1 + 1;
+
+  for (let rr = r1; rr <= r2; rr++)
+    for (let cc = c1; cc <= c2; cc++)
+      if (mondrianGrid[rr][cc] !== -1) {
+        mondrianStart = null;
+        mondrianFlash('Block overlaps an existing rectangle!');
+        renderMondrianBoard();
+        return;
+      }
+
+  const dimKey = Math.min(w, h) + 'x' + Math.max(w, h);
+  for (const rect of mondrianRects) {
+    const rw = rect.c2 - rect.c1 + 1;
+    const rh = rect.r2 - rect.r1 + 1;
+    if (Math.min(rw, rh) + 'x' + Math.max(rw, rh) === dimKey) {
+      mondrianStart = null;
+      mondrianFlash(`A ${dimKey} block already exists!`);
+      renderMondrianBoard();
+      return;
+    }
+  }
+
+  const color = MONDRIAN_PALETTE[mondrianColorIdx % MONDRIAN_PALETTE.length];
+  mondrianColorIdx++;
+  mondrianRects.push({ r1, c1, r2, c2, color });
+  const idx = mondrianRects.length - 1;
+  for (let rr = r1; rr <= r2; rr++)
+    for (let cc = c1; cc <= c2; cc++)
+      mondrianGrid[rr][cc] = idx;
+
+  mondrianStart = null;
+  renderMondrianBoard();
+  mondrianUpdateScore();
+}
+
+function mondrianFlash(msg) {
+  const el = document.getElementById('mondrian-score');
+  if (el) { el.textContent = msg; el.className = 'mondrian-score mondrian-err'; }
+}
+
+function mondrianUndo() {
+  if (!mondrianRects.length) return;
+  const last = mondrianRects.pop();
+  for (let r = last.r1; r <= last.r2; r++)
+    for (let c = last.c1; c <= last.c2; c++)
+      mondrianGrid[r][c] = -1;
+  mondrianColorIdx = mondrianRects.length;
+  mondrianStart = null;
+  renderMondrianBoard();
+  mondrianUpdateScore();
+}
+
+function mondrianReset() {
+  mondrianRects = [];
+  mondrianGrid = Array.from({ length: MONDRIAN_SIZE }, () => Array(MONDRIAN_SIZE).fill(-1));
+  mondrianStart = null;
+  mondrianColorIdx = 0;
+  renderMondrianBoard();
+  const s = document.getElementById('mondrian-score');
+  if (s) { s.textContent = 'Place rectangles to begin'; s.className = 'mondrian-score'; }
+  const f = document.getElementById('mondrian-filled');
+  if (f) f.textContent = '';
+  const b = document.getElementById('mondrian-blocks');
+  if (b) b.innerHTML = '';
+}
+
+function mondrianUpdateScore() {
+  const scoreEl = document.getElementById('mondrian-score');
+  const filledEl = document.getElementById('mondrian-filled');
+  const blocksEl = document.getElementById('mondrian-blocks');
+
+  if (!mondrianRects.length) {
+    if (scoreEl) { scoreEl.textContent = 'Place rectangles to begin'; scoreEl.className = 'mondrian-score'; }
+    if (filledEl) filledEl.textContent = '';
+    if (blocksEl) blocksEl.innerHTML = '';
+    return;
+  }
+
+  const score = mondrianRects.length;
+  const filled = mondrianGrid.flat().filter(x => x !== -1).length;
+  const total = MONDRIAN_SIZE * MONDRIAN_SIZE;
+
+  if (scoreEl) {
+    if (filled === total) {
+      scoreEl.textContent = `Complete! Final score: ${score} block${score !== 1 ? 's' : ''}`;
+      scoreEl.className = 'mondrian-score mondrian-win';
+    } else {
+      scoreEl.textContent = `Blocks placed: ${score}`;
+      scoreEl.className = 'mondrian-score';
+    }
+  }
+  if (filledEl) filledEl.textContent = `${filled}/${total} cells filled`;
+  if (blocksEl) {
+    blocksEl.innerHTML = mondrianRects.map(rect => {
+      const w = rect.c2 - rect.c1 + 1;
+      const h = rect.r2 - rect.r1 + 1;
+      return `<div class="mondrian-block-tag" style="border-left:3px solid ${rect.color}">${w}\u00D7${h} \u2014 area ${w * h}</div>`;
+    }).join('');
+  }
+}
+
+function renderMondrianBoard() {
+  const el = document.getElementById('mondrian-board');
+  if (!el) return;
+  let html = '';
+  for (let r = 0; r < MONDRIAN_SIZE; r++) {
+    for (let c = 0; c < MONDRIAN_SIZE; c++) {
+      const idx = mondrianGrid[r][c];
+      let cls = 'mondrian-cell';
+      let style = '';
+
+      if (idx !== -1) {
+        const rect = mondrianRects[idx];
+        if (rect) {
+          style = `background:${rect.color}22;`;
+          const borders = [];
+          if (r === rect.r1) borders.push(`border-top:2.5px solid ${rect.color}`);
+          if (r === rect.r2) borders.push(`border-bottom:2.5px solid ${rect.color}`);
+          if (c === rect.c1) borders.push(`border-left:2.5px solid ${rect.color}`);
+          if (c === rect.c2) borders.push(`border-right:2.5px solid ${rect.color}`);
+          style += borders.join(';');
+        }
+      }
+
+      if (mondrianStart && mondrianStart[0] === r && mondrianStart[1] === c) cls += ' mondrian-start';
+      html += `<div class="${cls}" style="${style}" onclick="mondrianClickCell(${r},${c})" onmouseenter="mondrianPreview(${r},${c})" onmouseleave="mondrianClearPreview()"></div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+function mondrianPreview(r, c) {
+  if (!mondrianStart) return;
+  const r1 = Math.min(mondrianStart[0], r);
+  const c1 = Math.min(mondrianStart[1], c);
+  const r2 = Math.max(mondrianStart[0], r);
+  const c2 = Math.max(mondrianStart[1], c);
+  const cells = document.querySelectorAll('.mondrian-cell');
+  cells.forEach(cell => cell.classList.remove('mondrian-preview'));
+  for (let rr = r1; rr <= r2; rr++)
+    for (let cc = c1; cc <= c2; cc++) {
+      const i = rr * MONDRIAN_SIZE + cc;
+      if (cells[i]) cells[i].classList.add('mondrian-preview');
+    }
+}
+
+function mondrianClearPreview() {
+  document.querySelectorAll('.mondrian-cell.mondrian-preview').forEach(c => c.classList.remove('mondrian-preview'));
 }
 
 // ════════════════════════════════════
@@ -993,6 +1543,24 @@ function updateChessMoves() {
   el.textContent = pgn || 'No moves yet.';
   el.scrollTop = el.scrollHeight;
 }
+
+// ── KEYBOARD INPUT ──────────────────────────────────────────────────
+document.addEventListener('keydown', function (e) {
+  if (arcadeGame === 'sudoku' && sudokuSelected) {
+    const key = e.key;
+    if (key >= '1' && key <= '9') { sudokuInput(parseInt(key)); e.preventDefault(); }
+    else if (key === 'Backspace' || key === 'Delete') { sudokuErase(); e.preventDefault(); }
+    else if (key === 'Escape') { sudokuSelected = null; renderSudokuBoard(); }
+    else if (key === 'ArrowUp' && sudokuSelected[0] > 0) { sudokuSelected = [sudokuSelected[0] - 1, sudokuSelected[1]]; renderSudokuBoard(); e.preventDefault(); }
+    else if (key === 'ArrowDown' && sudokuSelected[0] < 8) { sudokuSelected = [sudokuSelected[0] + 1, sudokuSelected[1]]; renderSudokuBoard(); e.preventDefault(); }
+    else if (key === 'ArrowLeft' && sudokuSelected[1] > 0) { sudokuSelected = [sudokuSelected[0], sudokuSelected[1] - 1]; renderSudokuBoard(); e.preventDefault(); }
+    else if (key === 'ArrowRight' && sudokuSelected[1] < 8) { sudokuSelected = [sudokuSelected[0], sudokuSelected[1] + 1]; renderSudokuBoard(); e.preventDefault(); }
+  }
+  if (arcadeGame === 'mondrian' && e.key === 'Escape' && mondrianStart) {
+    mondrianStart = null;
+    renderMondrianBoard();
+  }
+});
 
 // ── INIT ON READY ────────────────────────────────────────────────────
 function initArcadeOnReady() {

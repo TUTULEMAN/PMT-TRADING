@@ -405,13 +405,12 @@ function initCalendar() {
   if (!calendarInitialized) {
     container.innerHTML = renderCalendarSkeleton();
     calendarInitialized = true;
-    // Small delay so the map container has rendered dimensions
     setTimeout(() => {
       initCalMap();
       loadCalendarData();
     }, 100);
   } else {
-    // Re-entering the view — invalidate map size in case container resized
     if (calMap) setTimeout(() => calMap.invalidateSize(), 100);
   }
 }
+

@@ -6,7 +6,7 @@
 <title>PMT Terminal</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
@@ -16,6 +16,7 @@
 
 <!-- ══ STARTUP MODAL ══ -->
 <div id="modal">
+  <div id="modal-fluid-bg" aria-hidden="true"></div>
   <div id="mbox">
     <h1>PMT <em>Terminal</em></h1>
     <div class="mrow" style="font-size:11px;opacity:.9;margin-top:4px">
@@ -29,7 +30,7 @@
       </a>
     </div>
     <div class="mrow">
-      Three API keys are required. Get free keys at the links below.<br>
+      3 API keys required, 1 optional. Get free keys at the links below.<br>
       <span style="font-size:11px;opacity:.8">Usage is spread across providers so no single key is overused.</span>
     </div>
     <div class="mfield">
@@ -44,17 +45,21 @@
       <label>EODHD API Key <span class="mfield-info" title="Historical EOD data and performance metrics.">ℹ</span> <span>(required)</span></label>
       <input class="minput" id="eodhd-key" type="text" placeholder="EODHD key from eodhd.com" autocomplete="off" spellcheck="false"/>
     </div>
+    <div class="mfield">
+      <label>FRED API Key <span class="mfield-info" title="US Treasury yield curve, GDP, CPI, unemployment, Fed rate.">ℹ</span> <span>(optional)</span></label>
+      <input class="minput" id="fred-key" type="text" placeholder="FRED key from fred.stlouisfed.org" autocomplete="off" spellcheck="false"/>
+    </div>
     <div>
       <div class="mtest-row">
         <div id="mtest" style="flex:1">
           <div id="mtd"></div>
-          <div id="mtxt">Enter all three keys above, then test</div>
+          <div id="mtxt">Enter the 3 required keys above, then test</div>
         </div>
         <button id="mtest-btn" onclick="testKeys()">Test Keys</button>
       </div>
     </div>
     <button id="mgo" onclick="launch()">Launch Terminal →</button>
-    <p class="mnote">Free tiers: <a href="https://finnhub.io" target="_blank">finnhub.io</a> · <a href="https://massive.com" target="_blank">massive.com</a> · <a href="https://eodhd.com" target="_blank">eodhd.com</a></p>
+    <p class="mnote">Free tiers: <a href="https://finnhub.io" target="_blank">finnhub.io</a> · <a href="https://massive.com" target="_blank">massive.com</a> · <a href="https://eodhd.com" target="_blank">eodhd.com</a> · <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank">FRED</a></p>
   </div>
 </div>
 
@@ -83,6 +88,37 @@
   </div>
 </div>
 
+<!-- ══ COMMAND BAR OVERLAY ══ -->
+<div id="cmd-bar" style="display:none">
+  <div class="cmd-backdrop" onclick="closeCmdBar()"></div>
+  <div class="cmd-box">
+    <input id="cmd-input" type="text" placeholder="Type a symbol, command, or view name…" autocomplete="off" spellcheck="false"/>
+    <div id="cmd-results" class="cmd-results"></div>
+  </div>
+</div>
+
+<!-- ══ HOTKEY CHEAT SHEET ══ -->
+<div id="hotkey-sheet" style="display:none">
+  <div class="cmd-backdrop" onclick="toggleHotkeySheet()"></div>
+  <div class="hk-box">
+    <div class="hk-title">Keyboard Shortcuts</div>
+    <div class="hk-grid">
+      <div class="hk-row"><kbd>1</kbd><span>Charts</span></div>
+      <div class="hk-row"><kbd>2</kbd><span>Backtest</span></div>
+      <div class="hk-row"><kbd>3</kbd><span>Calendar</span></div>
+      <div class="hk-row"><kbd>4</kbd><span>Study</span></div>
+      <div class="hk-row"><kbd>5</kbd><span>Arcade</span></div>
+      <div class="hk-row"><kbd>Ctrl+K</kbd><span>Command bar</span></div>
+      <div class="hk-row"><kbd>/</kbd><span>Command bar</span></div>
+      <div class="hk-row"><kbd>N</kbd><span>Toggle news</span></div>
+      <div class="hk-row"><kbd>T</kbd><span>Cycle theme</span></div>
+      <div class="hk-row"><kbd>?</kbd><span>This help</span></div>
+      <div class="hk-row"><kbd>Esc</kbd><span>Close overlay</span></div>
+    </div>
+    <div class="hk-hint">Press <kbd>?</kbd> to close</div>
+  </div>
+</div>
+
 <div id="ws">
 
   <!-- ══ CHART VIEW ══ -->
@@ -92,6 +128,10 @@
       <div id="sb">
         <div id="sw">
           <input id="si" type="text" placeholder="AAPL or FX / EQT / CRPT" autocomplete="off" spellcheck="false"/>
+          <button id="cmd-info" title="Press Ctrl+K to open command bar" onclick="openCmdBar()">
+            <span class="cmd-info-icon">i</span>
+            <span class="cmd-info-tip">Press <kbd>Ctrl+K</kbd> to open the command bar. Quick-jump to any symbol, view, or action.</span>
+          </button>
           <div id="sd"></div>
         </div>
         <div id="cpx">
@@ -156,12 +196,6 @@
         <div class="cp" id="mp" style="flex:1;min-height:0">
           <div id="ce"><h3>PMT Terminal</h3><p>Enter a symbol above</p></div>
         </div>
-        <div class="cp" id="rp">
-          <div class="pl">RSI<span id="rsiv"></span></div>
-        </div>
-        <div class="cp" id="macp">
-          <div class="pl">MACD</div>
-        </div>
       </div>
 
       <!-- Industry & asset analytics (scrollable below chart) -->
@@ -210,6 +244,17 @@
             </div>
           </section>
           <section class="ap-section" id="massive-snapshot" style="display:none"></section>
+          <section class="ap-section" id="yield-section" style="display:none">
+            <div class="ap-section-title">US Treasury Yield Curve</div>
+            <div id="yield-curve-panel" class="yield-panel">
+              <div id="yield-curve-chart" class="yield-chart"></div>
+              <div id="yield-curve-table" class="yield-table"></div>
+            </div>
+          </section>
+          <section class="ap-section" id="econ-section" style="display:none">
+            <div class="ap-section-title">Economic Indicators</div>
+            <div id="econ-panel" class="econ-panel"></div>
+          </section>
         </div>
       </div>
     </div>
@@ -262,7 +307,12 @@
         </div>
       </div>
       <div id="nfeed">
-        <div id="nload"><div class="spin"></div><span style="font-size:10px;color:var(--dim)">Loading news…</span></div>
+        <div id="nload">
+          <div class="skeleton-item"><div class="skeleton-line w-40"></div><div class="skeleton-line w-full"></div><div class="skeleton-line w-80"></div></div>
+          <div class="skeleton-item"><div class="skeleton-line w-40"></div><div class="skeleton-line w-full"></div><div class="skeleton-line w-80"></div></div>
+          <div class="skeleton-item"><div class="skeleton-line w-40"></div><div class="skeleton-line w-full"></div><div class="skeleton-line w-80"></div></div>
+          <div class="skeleton-item"><div class="skeleton-line w-40"></div><div class="skeleton-line w-full"></div><div class="skeleton-line w-80"></div></div>
+        </div>
       </div>
       <div id="news-err">
         <p>News failed to load.<br>Check your API key or try refreshing.<br><a href="#" onclick="pollNews();return false;">Retry</a></p>
@@ -277,7 +327,7 @@
       <div class="cs">
         <div class="ct">Symbol</div>
         <div class="cr"><div class="cl">Symbol</div><input class="ci" id="bs" type="text" value="AAPL" spellcheck="false"/></div>
-        <div class="cr" style="font-size:10px;color:var(--dim)">Uses live data from Charts. Load symbol there first, wait for 30+ ticks.</div>
+        <div class="cr" style="font-size:10px;color:var(--dim)">Auto-fetches 90 days of history. If rate-limited, wait 30s and retry.</div>
       </div>
       <div class="cs">
         <div class="ct">Capital</div>
@@ -317,17 +367,21 @@
         <div class="pb" id="p-custom">
           <div class="cr"><div class="cl">Custom Signal Function</div>
             <textarea class="ci" id="ce-editor" style="min-height:150px;resize:vertical;line-height:1.65;tab-size:2">// Return 'buy', 'sell', or null
-// Available: i, data[i], ind[i]
-// ind keys: rsi14, macd, macdSignal
+// data[i] = { open, high, low, close, volume }
+// ind[i] keys: sma5, sma10, rsi14, macd, macdSignal
 function signal(i, data, ind) {
   const c = ind[i], p = ind[i - 1];
-  if (!c || !p) return null;
-  if (c.rsi14 != null && c.rsi14 < 30) return 'buy';
-  if (c.rsi14 != null && c.rsi14 > 70) return 'sell';
+  if (!c || !p || !c.sma5 || !p.sma5) return null;
+  // Buy when price crosses above SMA(5)
+  if (data[i-1].close < p.sma5 && data[i].close > c.sma5)
+    return 'buy';
+  // Sell when price crosses below SMA(5)
+  if (data[i-1].close > p.sma5 && data[i].close < c.sma5)
+    return 'sell';
   return null;
 }</textarea>
           </div>
-          <div class="ch">Access <code>data[i]</code> (OHLCV) and <code>ind[i]</code> (indicators). Return <code>'buy'</code>, <code>'sell'</code>, or <code>null</code>.</div>
+          <div class="ch">Access <code>data[i]</code> (OHLCV) and <code>ind[i]</code> (sma5, sma10, rsi14, macd, macdSignal). Return <code>'buy'</code>, <code>'sell'</code>, or <code>null</code>.</div>
         </div>
       </div>
       <div class="cs">
@@ -430,20 +484,35 @@ function signal(i, data, ind) {
           <li><span class="label">Fundamental analysis</span> — cash-flow, multiples, quality, macro.<div class="pill-links"><a href="https://pages.stern.nyu.edu/~adamodar/" target="_blank">Aswath Damodaran</a><a href="https://www.investopedia.com/terms/f/fundamentalanalysis.asp" target="_blank">Fundamental overview</a></div></li>
           <li><span class="label">Hybrid / quant</span> — factor models, risk premia, statistical arbitrage.<div class="pill-links"><a href="https://www.efrontiers.com/sites/default/files/quantitative_trading_ernie_chan.pdf" target="_blank">Quant trading (Chan excerpt)</a></div></li>
         </ul></article>
-        <article class="study-card"><h2>UIC Research<span class="tag">Faculty · Papers</span></h2><ul>
+        <article class="study-card"><h2>UIC Research<span class="tag">Faculty · Papers · Books</span></h2><ul>
           <li><span class="label">Prof. Oleg Bondarenko</span> — derivatives, options pricing, market microstructure.<div class="pill-links"><a href="https://business.uic.edu/profiles/bondarenko-oleg/" target="_blank">UIC Profile</a><a href="https://papers.ssrn.com/sol3/cf_dev/AbsByAuth.cfm?per_id=148152" target="_blank">SSRN Papers</a></div></li>
           <li><span class="label">Prof. Lan Zhang</span> — high-frequency data, statistical arbitrage, econometrics.<div class="pill-links"><a href="https://business.uic.edu/profiles/lan-zhang/" target="_blank">UIC Profile</a><a href="https://scholar.google.com/citations?user=Y0q_BngAAAAJ" target="_blank">Google Scholar</a></div></li>
           <li><span class="label">Prof. Gib Bassett</span> — quantile regression, risk analysis.<div class="pill-links"><a href="https://gib.people.uic.edu/" target="_blank">UIC Profile</a></div></li>
+          <li><span class="label">Prof. Lingjie Ma</span> — <em>Quantitative Investing: From Theory to Industry</em> (Springer). Quant finance from a UIC perspective.<div class="pill-links"><a href="https://link.springer.com/book/10.1007/978-3-030-47202-9" target="_blank">Springer</a></div></li>
         </ul></article>
         <article class="study-card"><h2>Essential Books<span class="tag">Library</span></h2><ul>
           <li><span class="label">Quantitative Trading</span> by Ernest P. Chan. The bible for retail quants and basic stat-arb.<div class="pill-links"><a href="https://www.goodreads.com/book/show/443641.Quantitative_Trading" target="_blank">Goodreads</a><a href="https://www.efrontiers.com/sites/default/files/quantitative_trading_ernie_chan.pdf" target="_blank">Excerpt (PDF)</a></div></li>
+          <li><span class="label">Algorithmic Trading</span> by Ernest P. Chan. Systematic strategies, execution, and risk management.<div class="pill-links"><a href="https://www.goodreads.com/book/show/16801191-algorithmic-trading" target="_blank">Goodreads</a></div></li>
           <li><span class="label">Machine Learning for Algorithmic Trading</span> by Stefan Jansen. Predictive models, NLP, feature engineering.<div class="pill-links"><a href="https://github.com/stefan-jansen/machine-learning-for-trading" target="_blank">GitHub Repo</a></div></li>
           <li><span class="label">Options, Futures, and Other Derivatives</span> by John C. Hull. The industry standard text for pricing.<div class="pill-links"><a href="https://www.goodreads.com/book/show/288229.Options_Futures_and_Other_Derivatives" target="_blank">Goodreads</a></div></li>
+          <li><span class="label">Option Volatility &amp; Pricing</span> by Sheldon Natenberg. The definitive guide to options pricing and volatility.<div class="pill-links"><a href="https://www.goodreads.com/book/show/119397.Option_Volatility_and_Pricing" target="_blank">Goodreads</a></div></li>
+          <li><span class="label">The Volatility Edge in Options Trading</span> by Jeff Augen. Exploiting pricing anomalies and volatility dynamics.<div class="pill-links"><a href="https://www.goodreads.com/book/show/2798529-the-volatility-edge-in-options-trading" target="_blank">Goodreads</a></div></li>
+          <li><span class="label">A Practical Guide to Quantitative Finance Interviews</span> by Xinfeng Zhou. The "green book" — probability, brainteasers, and quant prep.<div class="pill-links"><a href="https://www.goodreads.com/book/show/7916837-a-practical-guide-to-quantitative-finance-interviews" target="_blank">Goodreads</a></div></li>
+          <li><span class="label">Volatility Trading</span> by Euan Sinclair. Practical vol surface modeling, Greeks, and trade structuring.<div class="pill-links"><a href="https://www.goodreads.com/book/show/3669075-volatility-trading" target="_blank">Goodreads</a></div></li>
+          <li><span class="label">Option Trading</span> by Euan Sinclair. Pricing and volatility strategies and techniques.<div class="pill-links"><a href="https://www.goodreads.com/book/show/8327210-option-trading" target="_blank">Goodreads</a></div></li>
+          <li><span class="label">The Laws of Trading</span> by Agustin Lebron. Decision-making frameworks from a quant trading veteran.<div class="pill-links"><a href="https://www.goodreads.com/book/show/43210755-the-laws-of-trading" target="_blank">Goodreads</a></div></li>
+          <li><span class="label">Introduction to Econometrics</span> by Stock &amp; Watson. Core econometrics: regression, causal inference, time series.<div class="pill-links"><a href="https://www.goodreads.com/book/show/299025.Introduction_to_Econometrics" target="_blank">Goodreads</a></div></li>
           <li><span class="label">Advances in Active Portfolio Management</span> by Grinold &amp; Kahn. Factor investing and portfolio construction.<div class="pill-links"><a href="https://www.goodreads.com/book/show/6966155-advances-in-active-portfolio-management" target="_blank">Goodreads</a></div></li>
+          <li><span class="label">The Elements of Statistical Learning</span> by Hastie, Tibshirani &amp; Friedman. The top reference on statistical learning methods.<div class="pill-links"><a href="https://hastie.su.domains/ElemStatLearn/" target="_blank">Free PDF</a><a href="https://www.goodreads.com/book/show/148009.The_Elements_of_Statistical_Learning" target="_blank">Goodreads</a></div></li>
+          <li><span class="label">Stochastic Calculus for Finance I &amp; II</span> by Steven Shreve. Rigorous stochastic calculus for derivatives pricing.<div class="pill-links"><a href="https://www.goodreads.com/book/show/868837.Stochastic_Calculus_for_Finance_I" target="_blank">Vol I</a><a href="https://www.goodreads.com/book/show/868839.Stochastic_Calculus_for_Finance_II" target="_blank">Vol II</a></div></li>
         </ul></article>
-        <article class="study-card"><h2>Online Materials<span class="tag">PMT · Books · Video</span></h2><ul>
+        <article class="study-card"><h2>Online Materials<span class="tag">PMT · Courses · Video</span></h2><ul>
           <li><span class="label">PMT Trading modules</span><div class="pill-links"><a href="https://drive.google.com/drive/u/1/folders/1NErR96wQvUYF7d6U8zVKXZE8G6Xy0hbm" target="_blank">Google Drive folder</a></div></li>
-          <li><span class="label">YouTube</span><div class="pill-links"><a href="https://www.youtube.com/@QuantConnect" target="_blank">QuantConnect</a><a href="https://www.youtube.com/@TwoSigma" target="_blank">Two Sigma</a><a href="https://www.youtube.com/@mitocw" target="_blank">MIT OCW (Finance)</a><a href="https://www.youtube.com/c/PartTimeLarry" target="_blank">Part Time Larry (Algo)</a></div></li>
+          <li><span class="label">YouTube</span><div class="pill-links"><a href="https://www.youtube.com/@QuantConnect" target="_blank">QuantConnect</a><a href="https://www.youtube.com/@TwoSigma" target="_blank">Two Sigma</a><a href="https://www.youtube.com/@mitocw" target="_blank">MIT OCW (Finance)</a><a href="https://www.youtube.com/c/PartTimeLarry" target="_blank">Part Time Larry</a><a href="https://www.youtube.com/@DimitriBianco" target="_blank">Dimitri Bianco</a><a href="https://www.youtube.com/@QuantGuild" target="_blank">Quant Guild</a><a href="https://www.youtube.com/@LitNomad" target="_blank">Lit Nomad</a><a href="https://www.youtube.com/@CodingJesus" target="_blank">Coding Jesus</a><a href="https://www.youtube.com/@QuantPy" target="_blank">QuantPy</a></div></li>
+          <li><span class="label">Prep &amp; practice</span><div class="pill-links"><a href="https://traderiq.org/" target="_blank">TraderIQ.org</a></div></li>
+          <li><span class="label">Probability &amp; statistics</span> — foundational courses for quant work.<div class="pill-links"><a href="https://ocw.mit.edu/courses/18-05-introduction-to-probability-and-statistics-spring-2022/" target="_blank">MIT 18.05 Intro Prob &amp; Stats</a><a href="https://ocw.mit.edu/courses/18-650-statistics-for-applications-fall-2016/" target="_blank">MIT 18.650 Applied Stats</a><a href="https://projects.iq.harvard.edu/stat110" target="_blank">Harvard Math 154 / Stat 110</a></div></li>
+          <li><span class="label">MLE &amp; GLM</span> — maximum likelihood estimation and generalized linear models.<div class="pill-links"><a href="https://ocw.mit.edu/courses/18-650-statistics-for-applications-fall-2016/pages/lecture-slides/" target="_blank">MIT 18.650 (covers MLE)</a></div></li>
+          <li><span class="label">Stochastic processes</span> — Markov chains, random walks, martingales. Extension of MIT 6.041.<div class="pill-links"><a href="https://ocw.mit.edu/courses/6-041sc-probabilistic-systems-analysis-and-applied-probability-fall-2013/" target="_blank">MIT 6.041</a><a href="https://www.goodreads.com/book/show/868837.Stochastic_Calculus_for_Finance_I" target="_blank">Shreve Vol I</a></div></li>
           <li><span class="label">Books</span><div class="pill-links"><a href="https://www.goodreads.com/book/show/967894.Algorithmic_Trading_and_DMA" target="_blank">Algorithmic Trading &amp; DMA</a><a href="https://www.goodreads.com/book/show/103699.The_Man_Who_Solved_the_Market" target="_blank">The Man Who Solved the Market</a></div></li>
         </ul></article>
         <article class="study-card"><h2>Tools &amp; Frameworks<span class="tag">Stack</span></h2><ul>

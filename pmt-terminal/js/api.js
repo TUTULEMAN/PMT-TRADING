@@ -83,26 +83,27 @@ function updateMarketStatus() {
 updateMarketStatus();
 setInterval(updateMarketStatus, 30000);
 
-// ── MODAL — ALL THREE KEYS REQUIRED ───────
+// ── MODAL — 3 REQUIRED + 2 OPTIONAL KEYS ───────
 function getModalKeys() {
   return {
     fh: document.getElementById('m-key').value.trim(),
     mv: document.getElementById('massive-key').value.trim(),
-    eodhd: document.getElementById('eodhd-key').value.trim()
+    eodhd: document.getElementById('eodhd-key').value.trim(),
+    fred: (document.getElementById('fred-key') || {}).value?.trim() || ''
   };
 }
 
 document.getElementById('m-key').addEventListener('input', () => {
   document.getElementById('mgo').classList.remove('active');
-  setTestState('idle', 'Enter all three keys above, then test');
+  setTestState('idle', 'Enter the 3 required keys above, then test');
 });
 document.getElementById('massive-key').addEventListener('input', () => {
   document.getElementById('mgo').classList.remove('active');
-  setTestState('idle', 'Enter all three keys above, then test');
+  setTestState('idle', 'Enter the 3 required keys above, then test');
 });
 document.getElementById('eodhd-key').addEventListener('input', () => {
   document.getElementById('mgo').classList.remove('active');
-  setTestState('idle', 'Enter all three keys above, then test');
+  setTestState('idle', 'Enter the 3 required keys above, then test');
 });
 
 document.getElementById('m-key').addEventListener('keydown', e => { if (e.key === 'Enter') testKeys(); });
@@ -112,10 +113,10 @@ document.getElementById('eodhd-key').addEventListener('keydown', e => { if (e.ke
 async function testKeys() {
   const { fh, mv, eodhd } = getModalKeys();
   if (!fh || !mv || !eodhd) {
-    setTestState('err', 'Enter all three keys (Finnhub, Massive, EODHD)');
+    setTestState('err', 'Enter the 3 required keys (Finnhub, Massive, EODHD)');
     return;
   }
-  setTestState('chk', 'Testing all three keys…');
+  setTestState('chk', 'Testing required keys…');
   document.getElementById('mtest-btn').textContent = '…';
   let fhOk = false, mvOk = false, eodhdOk = false;
   const errors = [];
@@ -148,7 +149,7 @@ async function testKeys() {
     } else { errors.push('EODHD: ' + (erR.reason?.message || 'network error')); }
 
     if (fhOk && mvOk && eodhdOk) {
-      setTestState('ok', '✓ All three keys valid — ready to launch');
+      setTestState('ok', '✓ All required keys valid — ready to launch');
       document.getElementById('mgo').classList.add('active');
     } else {
       const missing = [];
@@ -178,11 +179,12 @@ function setTestState(state, msg) {
 }
 
 function launch() {
-  const { fh, mv, eodhd } = getModalKeys();
+  const { fh, mv, eodhd, fred } = getModalKeys();
   if (!fh || !mv || !eodhd) return;
   KEY = fh;
   MASSIVE_KEY = mv;
   EODHD_KEY = eodhd;
+  FRED_KEY = fred;
   document.getElementById('modal').style.display = 'none';
   setApiStatus('live', 'Live');
   initCharts();
@@ -207,6 +209,10 @@ function switchView(id, btn) {
   if (btn) btn.classList.add('on');
   if (id === 'cv') setTimeout(resizeCharts, 50);
   if (id === 'calv' && typeof initCalendar === 'function') initCalendar();
+  if (id === 'bv' && curSym) {
+    const bs = document.getElementById('bs');
+    if (bs && !bs.value.trim()) bs.value = curSym;
+  }
 }
 
 function goBacktest() {
@@ -784,6 +790,9 @@ function initAnalyticsPanel() {
   // Order book
   initOrderBookTabs();
   startOBAutoRefresh();
+  // Yield curve (hardcoded data) + FRED-powered econ panel (optional)
+  fetchYieldCurve();
+  if (FRED_KEY) { fetchEconIndicators(); }
 }
 
 async function fetchAssetClassesLive() {
@@ -842,7 +851,11 @@ function renderSectorHeatmap(data) {
     const name = (s.name || s.sector || '—').replace(/\s*\(.*\)/, '');
     const pct = typeof s.pct === 'number' ? s.pct : parseFloat(s.pct || s.changesPercentage || 0);
     const etf = s.etf ? `<span style="display:block;font-size:7px;opacity:.6;margin-top:1px">${s.etf}</span>` : '';
-    return `<div class="heat-cell ${pctClass(pct)}" title="${name}: ${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%">${name}${etf}<span>${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span></div>`;
+    const intensity = Math.min(1, Math.abs(pct) / 3);
+    const bg = Math.abs(pct) < 0.05 ? 'var(--border)' : (pct > 0 ? `rgba(0, 230, 118, ${0.1 + intensity * 0.3})` : `rgba(255, 59, 48, ${0.1 + intensity * 0.3})`);
+    const borderColor = Math.abs(pct) < 0.05 ? 'transparent' : (pct > 0 ? `rgba(0, 230, 118, ${0.3 + intensity * 0.3})` : `rgba(255, 59, 48, ${0.3 + intensity * 0.3})`);
+    const color = Math.abs(pct) < 0.05 ? 'var(--tx)' : (pct > 0 ? 'var(--g)' : 'var(--r)');
+    return `<div class="heat-cell" style="background:${bg};color:${color};border:1px solid ${borderColor};transition:all .2s cubic-bezier(0.4,0,0.2,1)" title="${name}: ${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%">${name}${etf}<span>${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span></div>`;
   }).join('');
 }
 
@@ -1251,4 +1264,305 @@ function refreshOBForSymbol() {
   if (curTab && curTab.classList.contains('on')) {
     fetchAndRenderOB();
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  COMMAND BAR — Ctrl+K quick-jump to symbols, views, and actions
+// ══════════════════════════════════════════════════════════════════════
+
+const CMD_REGISTRY = [
+  { label:'Charts',         keywords:'charts chart main',       icon:'📈', hint:'View', action(){ switchViewByIdx(0); }},
+  { label:'Backtest',       keywords:'backtest test strategy',  icon:'🔬', hint:'View', action(){ switchViewByIdx(1); }},
+  { label:'Calendar',       keywords:'calendar events ipo sec', icon:'📅', hint:'View', action(){ switchViewByIdx(2); }},
+  { label:'Study',          keywords:'study learn resources',   icon:'📚', hint:'View', action(){ switchViewByIdx(3); }},
+  { label:'Arcade',         keywords:'arcade games bored',      icon:'🎮', hint:'View', action(){ switchViewByIdx(4); }},
+  { label:'Toggle News',    keywords:'news sidebar toggle',     icon:'📰', hint:'Action', action(){ toggleNewsSidebar(); }},
+  { label:'Toggle RSI',     keywords:'rsi indicator',           icon:'📊', hint:'Indicator', action(){ if(typeof tind==='function') tind('rsi'); }},
+  { label:'Toggle MACD',    keywords:'macd indicator',          icon:'📉', hint:'Indicator', action(){ if(typeof tind==='function') tind('macd'); }},
+  { label:'Cycle Theme',    keywords:'theme dark light gray rgb',icon:'🎨', hint:'Action', action(){ cycleTheme(); }},
+  { label:'News: All',      keywords:'news all',                icon:'📰', hint:'Filter', action(){ setNF(null,'all'); }},
+  { label:'News: Crypto',   keywords:'news crypto bitcoin',     icon:'₿',  hint:'Filter', action(){ setNF(null,'crypto'); }},
+  { label:'News: Forex',    keywords:'news forex fx currency',  icon:'💱', hint:'Filter', action(){ setNF(null,'forex'); }},
+  { label:'News: M&A',      keywords:'news merger acquisition', icon:'🤝', hint:'Filter', action(){ setNF(null,'merger'); }},
+];
+
+let cmdSelIdx = 0;
+let cmdFiltered = [];
+
+let _cmdInputBound = false;
+
+function openCmdBar() {
+  const bar = document.getElementById('cmd-bar');
+  if (!bar) return;
+  bar.style.display = 'flex';
+  const inp = document.getElementById('cmd-input');
+  if (inp) {
+    inp.value = '';
+    if (!_cmdInputBound) {
+      inp.addEventListener('input', () => cmdSearch(inp.value));
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); cmdSelIdx = Math.min(cmdSelIdx + 1, cmdFiltered.length - 1); renderCmdResults(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); cmdSelIdx = Math.max(cmdSelIdx - 1, 0); renderCmdResults(); }
+        else if (e.key === 'Enter') { e.preventDefault(); cmdExec(cmdSelIdx); }
+        else if (e.key === 'Escape') { e.preventDefault(); closeCmdBar(); }
+      });
+      _cmdInputBound = true;
+    }
+    setTimeout(() => inp.focus(), 20);
+  }
+  cmdSelIdx = 0;
+  cmdFiltered = [...CMD_REGISTRY];
+  renderCmdResults();
+}
+
+function closeCmdBar() {
+  const bar = document.getElementById('cmd-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+function cmdSearch(q) {
+  q = q.trim().toLowerCase();
+  if (!q) { cmdFiltered = [...CMD_REGISTRY]; renderCmdResults(); return; }
+  const isTickerLike = /^[A-Za-z]{1,5}$/.test(q.trim());
+  cmdFiltered = CMD_REGISTRY.filter(c =>
+    c.label.toLowerCase().includes(q) || c.keywords.toLowerCase().includes(q)
+  );
+  if (isTickerLike) {
+    cmdFiltered.push({
+      label: `Load symbol: ${q.toUpperCase()}`,
+      keywords: '', icon: '🔎', hint: 'Symbol',
+      action() { loadSym(q.toUpperCase()); switchViewByIdx(0); }
+    });
+  }
+  cmdSelIdx = 0;
+  renderCmdResults();
+}
+
+function renderCmdResults() {
+  const el = document.getElementById('cmd-results');
+  if (!el) return;
+  el.innerHTML = cmdFiltered.map((c, i) =>
+    `<div class="cmd-item${i === cmdSelIdx ? ' sel' : ''}" onmouseenter="cmdSelIdx=${i};renderCmdResults()" onclick="cmdExec(${i})">
+      <span class="cmd-icon">${c.icon || ''}</span>
+      <span class="cmd-label">${c.label}</span>
+      <span class="cmd-hint">${c.hint || ''}</span>
+    </div>`
+  ).join('');
+}
+
+function cmdExec(idx) {
+  const c = cmdFiltered[idx];
+  if (c && c.action) c.action();
+  closeCmdBar();
+}
+
+function switchViewByIdx(idx) {
+  const btns = document.querySelectorAll('.nb');
+  const ids = ['cv','bv','calv','sv','gv'];
+  if (ids[idx]) switchView(ids[idx], btns[idx] || null);
+}
+
+function toggleNewsSidebar() {
+  const ns = document.getElementById('ns');
+  if (!ns) return;
+  ns.style.display = ns.style.display === 'none' ? '' : 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  HOTKEY SYSTEM — global keyboard shortcuts
+// ══════════════════════════════════════════════════════════════════════
+
+function toggleHotkeySheet() {
+  const sheet = document.getElementById('hotkey-sheet');
+  if (!sheet) return;
+  sheet.style.display = sheet.style.display === 'none' ? 'flex' : 'none';
+}
+
+document.addEventListener('keydown', function(e) {
+  const tag = (e.target.tagName || '').toLowerCase();
+  const inInput = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+
+  if (e.key === 'Escape') {
+    const cmdBar = document.getElementById('cmd-bar');
+    if (cmdBar && cmdBar.style.display === 'flex') { closeCmdBar(); e.preventDefault(); return; }
+    const hkSheet = document.getElementById('hotkey-sheet');
+    if (hkSheet && hkSheet.style.display === 'flex') { toggleHotkeySheet(); e.preventDefault(); return; }
+  }
+
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); e.stopPropagation(); openCmdBar(); return; }
+
+  if (inInput) return;
+
+  if (e.key === '/') { e.preventDefault(); openCmdBar(); return; }
+  if (e.key === '?') { e.preventDefault(); toggleHotkeySheet(); return; }
+
+  if (e.key >= '1' && e.key <= '5') { switchViewByIdx(parseInt(e.key) - 1); return; }
+  if (e.key === 'n' || e.key === 'N') { toggleNewsSidebar(); return; }
+  if (e.key === 't' && !e.ctrlKey && !e.metaKey) { cycleTheme(); return; }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  YIELD CURVE — US Treasury rates from FRED
+// ══════════════════════════════════════════════════════════════════════
+
+const YIELD_TENORS = [
+  { id:'DGS1MO', label:'1M',  months:1 },
+  { id:'DGS3MO', label:'3M',  months:3 },
+  { id:'DGS6MO', label:'6M',  months:6 },
+  { id:'DGS1',   label:'1Y',  months:12 },
+  { id:'DGS2',   label:'2Y',  months:24 },
+  { id:'DGS5',   label:'5Y',  months:60 },
+  { id:'DGS10',  label:'10Y', months:120 },
+  { id:'DGS20',  label:'20Y', months:240 },
+  { id:'DGS30',  label:'30Y', months:360 },
+];
+
+function fetchYieldCurve() {
+  const section = document.getElementById('yield-section');
+  if (section) section.style.display = 'block';
+
+  const hardcoded = [
+    { val: 5.25, prev: 5.28 },  // 1M
+    { val: 5.22, prev: 5.24 },  // 3M
+    { val: 5.07, prev: 5.10 },  // 6M
+    { val: 4.72, prev: 4.75 },  // 1Y
+    { val: 4.28, prev: 4.32 },  // 2Y
+    { val: 4.10, prev: 4.13 },  // 5Y
+    { val: 4.22, prev: 4.25 },  // 10Y
+    { val: 4.48, prev: 4.50 },  // 20Y
+    { val: 4.38, prev: 4.41 },  // 30Y
+  ];
+
+  const data = YIELD_TENORS.map((t, i) => ({
+    ...t,
+    val: hardcoded[i].val,
+    prev: hardcoded[i].prev,
+  }));
+
+  renderYieldCurve(data);
+}
+
+function renderYieldCurve(data) {
+  const chartEl = document.getElementById('yield-curve-chart');
+  const tableEl = document.getElementById('yield-curve-table');
+  if (!chartEl || !tableEl) return;
+
+  const valid = data.filter(d => d.val !== null);
+  if (!valid.length) { chartEl.innerHTML = '<div style="padding:20px;color:var(--dim);font-size:11px">No yield data available</div>'; return; }
+
+  const y2 = data.find(d => d.id === 'DGS2');
+  const y10 = data.find(d => d.id === 'DGS10');
+  const inverted = y2 && y10 && y2.val !== null && y10.val !== null && y2.val > y10.val;
+  const spread = (y10 && y2 && y10.val !== null && y2.val !== null) ? (y10.val - y2.val).toFixed(2) : null;
+
+  // SVG line chart
+  const W = 500, H = 160, pad = { top: 20, right: 20, bottom: 30, left: 40 };
+  const iw = W - pad.left - pad.right, ih = H - pad.top - pad.bottom;
+  const vals = valid.map(d => d.val);
+  const yMin = Math.min(...vals) - 0.3, yMax = Math.max(...vals) + 0.3;
+  const xScale = i => pad.left + (i / (valid.length - 1)) * iw;
+  const yScale = v => pad.top + ih - ((v - yMin) / (yMax - yMin)) * ih;
+  const points = valid.map((d, i) => `${xScale(i).toFixed(1)},${yScale(d.val).toFixed(1)}`).join(' ');
+  const areaPoints = points + ` ${xScale(valid.length-1).toFixed(1)},${(pad.top+ih).toFixed(1)} ${pad.left},${(pad.top+ih).toFixed(1)}`;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%">`;
+  svg += `<defs><linearGradient id="yg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${inverted?'#ff3c3c':'#00e5a0'}" stop-opacity=".25"/><stop offset="100%" stop-color="${inverted?'#ff3c3c':'#00e5a0'}" stop-opacity="0"/></linearGradient></defs>`;
+  svg += `<polygon points="${areaPoints}" fill="url(#yg)"/>`;
+  svg += `<polyline points="${points}" fill="none" stroke="${inverted?'#ff3c3c':'#00e5a0'}" stroke-width="2" stroke-linejoin="round"/>`;
+  valid.forEach((d, i) => {
+    svg += `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(d.val).toFixed(1)}" r="3" fill="${inverted?'#ff3c3c':'#00e5a0'}" stroke="var(--bg)" stroke-width="1.5"/>`;
+    svg += `<text x="${xScale(i).toFixed(1)}" y="${(pad.top+ih+16).toFixed(1)}" text-anchor="middle" fill="var(--dim)" font-size="9" font-family="'IBM Plex Mono',monospace">${d.label}</text>`;
+  });
+  for (let tick = Math.ceil(yMin); tick <= Math.floor(yMax + 1); tick += 1) {
+    if (tick < yMin || tick > yMax) continue;
+    svg += `<line x1="${pad.left}" y1="${yScale(tick).toFixed(1)}" x2="${W-pad.right}" y2="${yScale(tick).toFixed(1)}" stroke="var(--border)" stroke-dasharray="3"/>`;
+    svg += `<text x="${pad.left-6}" y="${(yScale(tick)+3).toFixed(1)}" text-anchor="end" fill="var(--dim)" font-size="9" font-family="'IBM Plex Mono',monospace">${tick}%</text>`;
+  }
+  svg += '</svg>';
+  chartEl.innerHTML = (inverted ? `<span class="yield-inversion-badge" style="position:absolute;top:6px;right:8px;z-index:2">⚠ Inverted · 2Y-10Y: ${spread}%</span>` : (spread !== null ? `<span style="position:absolute;top:6px;right:8px;z-index:2;font-size:9px;color:var(--dim)">2Y-10Y spread: ${spread}%</span>` : '')) + svg;
+
+  tableEl.innerHTML = data.map(d => {
+    const isInv = inverted && (d.id === 'DGS2' || d.id === 'DGS10');
+    const chg = (d.val !== null && d.prev !== null) ? d.val - d.prev : null;
+    return `<div class="yield-cell${isInv ? ' inverted' : ''}">
+      <div class="yield-tenor">${d.label}</div>
+      <div class="yield-val">${d.val !== null ? d.val.toFixed(2) + '%' : '—'}</div>
+      ${chg !== null ? `<div class="yield-chg ${chg >= 0 ? 'up' : 'dn'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ECONOMIC INDICATORS — GDP, CPI, Unemployment, Fed Funds, Spread
+// ══════════════════════════════════════════════════════════════════════
+
+const ECON_SERIES = [
+  { id:'GDP',      label:'GDP',             unit:'$B',   fmt:v=>v.toFixed(0),    goodUp:true  },
+  { id:'CPIAUCSL', label:'CPI',             unit:'Index', fmt:v=>v.toFixed(1),   goodUp:false },
+  { id:'UNRATE',   label:'Unemployment',    unit:'%',     fmt:v=>v.toFixed(1)+'%',goodUp:false },
+  { id:'FEDFUNDS', label:'Fed Funds Rate',  unit:'%',     fmt:v=>v.toFixed(2)+'%',goodUp:false },
+  { id:'T10Y2Y',   label:'10Y-2Y Spread',  unit:'%',     fmt:v=>v.toFixed(2)+'%',goodUp:true  },
+];
+
+async function fetchEconIndicators() {
+  if (!FRED_KEY) return;
+  const section = document.getElementById('econ-section');
+  if (section) section.style.display = 'block';
+
+  try {
+    const results = await Promise.allSettled(
+      ECON_SERIES.map(s =>
+        fetch(`${FRED}/series/observations?series_id=${s.id}&api_key=${FRED_KEY}&file_type=json&sort_order=desc&limit=12`)
+          .then(r => r.json())
+      )
+    );
+
+    const data = ECON_SERIES.map((s, i) => {
+      const r = results[i];
+      if (r.status !== 'fulfilled' || !r.value.observations) return { ...s, vals: [], latest: null, prev: null };
+      const obs = r.value.observations.filter(o => o.value !== '.').map(o => parseFloat(o.value));
+      return { ...s, vals: obs.reverse(), latest: obs.length ? obs[obs.length - 1] : null, prev: obs.length > 1 ? obs[obs.length - 2] : null };
+    });
+
+    renderEconIndicators(data);
+  } catch (e) {
+    console.warn('[FRED] economic indicators fetch failed', e);
+  }
+}
+
+function renderEconIndicators(data) {
+  const el = document.getElementById('econ-panel');
+  if (!el) return;
+
+  el.innerHTML = data.map(d => {
+    if (d.latest === null) return '';
+    const chg = d.prev !== null ? d.latest - d.prev : 0;
+    const improving = d.goodUp ? chg > 0 : chg < 0;
+    const arrowCls = Math.abs(chg) < 0.001 ? 'flat' : (improving ? 'up' : 'dn');
+    const arrowChar = Math.abs(chg) < 0.001 ? '—' : (chg > 0 ? '▲' : '▼');
+
+    // Mini sparkline SVG
+    let spark = '';
+    if (d.vals.length > 1) {
+      const sw = 60, sh = 24;
+      const vmin = Math.min(...d.vals), vmax = Math.max(...d.vals);
+      const vrange = vmax - vmin || 1;
+      const pts = d.vals.map((v, i) =>
+        `${(i / (d.vals.length - 1) * sw).toFixed(1)},${(sh - ((v - vmin) / vrange) * (sh - 4) - 2).toFixed(1)}`
+      ).join(' ');
+      spark = `<svg class="econ-spark" viewBox="0 0 ${sw} ${sh}" preserveAspectRatio="none" style="width:${sw}px;height:${sh}px">
+        <polyline points="${pts}" fill="none" stroke="${improving ? '#00e5a0' : '#ff3c3c'}" stroke-width="1.5" stroke-linejoin="round"/>
+      </svg>`;
+    }
+
+    return `<div class="econ-card">
+      <div class="econ-name">${d.label}</div>
+      <div class="econ-row">
+        <span class="econ-val">${d.fmt(d.latest)}</span>
+        <span class="econ-arrow ${arrowCls}">${arrowChar}</span>
+        ${spark}
+      </div>
+      <div class="econ-sub">${d.unit}${d.prev !== null ? ' · prev ' + d.fmt(d.prev) : ''}</div>
+    </div>`;
+  }).join('');
 }

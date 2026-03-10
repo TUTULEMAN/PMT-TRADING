@@ -10,6 +10,9 @@ window.MASSIVE = 'https://api.massive.com';
 window.MASSIVE_KEY = '';
 window.EODHD = 'https://eodhd.com/api';
 window.EODHD_KEY = '';
+window.FRED = 'https://api.stlouisfed.org/fred';
+window.FRED_KEY = '';
+
 
 // EODHD doesn't send CORS headers — route through a proxy when running in a browser.
 // Auto-detects on first call: tries direct, falls back to proxy, caches the result.
@@ -35,8 +38,6 @@ async function fetchEodhd(url) {
 
 // Chart instances
 window.mc   = null;   // main chart
-window.rc2  = null;   // RSI sub-chart
-window.macc = null;   // MACD sub-chart
 window.ms   = null;   // active main series
 
 // Indicator series references
@@ -143,14 +144,12 @@ function applyTheme(name) {
 function _updateChartTheme(t) {
   const chartOpts = {
     layout: { background: { type:'solid', color: t.bg }, textColor: t.tx },
-    grid: { vertLines: { color: t.border }, horzLines: { color: t.border } },
+    grid: { vertLines: { visible: false }, horzLines: { visible: false } },
     crosshair: { vertLine: { color: t.bhi, labelBackgroundColor: t.surface }, horzLine: { color: t.bhi, labelBackgroundColor: t.surface } },
     rightPriceScale: { borderColor: t.border },
     timeScale: { borderColor: t.border },
   };
   if (mc) try { mc.applyOptions(chartOpts); } catch(e){}
-  if (rc2) try { rc2.applyOptions(chartOpts); } catch(e){}
-  if (macc) try { macc.applyOptions(chartOpts); } catch(e){}
   if (eqC) try { eqC.applyOptions(chartOpts); } catch(e){}
   if (ddC) try { ddC.applyOptions(chartOpts); } catch(e){}
 }
@@ -166,7 +165,7 @@ function _chartOpts(fontSize) {
   const t = THEMES[curTheme] || THEMES.dark;
   return {
     layout: { background: { type:'solid', color: t.bg }, textColor: t.tx, fontSize, fontFamily: "'IBM Plex Mono', monospace" },
-    grid: { vertLines: { color: t.border, style: 1 }, horzLines: { color: t.border, style: 1 } },
+    grid: { vertLines: { visible: false }, horzLines: { visible: false } },
     crosshair: { get mode() { return _chMode(); }, vertLine: { color: t.bhi, width: 1, labelBackgroundColor: t.surface }, horzLine: { color: t.bhi, width: 1, labelBackgroundColor: t.surface } },
     rightPriceScale: { borderColor: t.border },
     timeScale: { borderColor: t.border, timeVisible: true, secondsVisible: false },
