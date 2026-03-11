@@ -16,7 +16,7 @@ async function fetchNews() {
   if (!KEY) throw new Error('No API key');
   const cats = ['general', 'forex', 'crypto', 'merger'];
   const results = await Promise.allSettled(
-    cats.map(c => fetch(`${FH}/news?category=${c}&minId=0&token=${KEY}`).then(r => r.json()))
+    cats.map(c => fetch(`${FH}/news?category=${c}&minId=0&token=${encodeURIComponent(KEY)}`).then(r => r.json()))
   );
   const map = new Map();
   results.forEach((r, i) => {

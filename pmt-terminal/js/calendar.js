@@ -91,7 +91,7 @@ function heatColor(dateStr) {
 async function fetchIpoCalendar(from, to) {
   if (typeof KEY === 'undefined' || !KEY) return [];
   try {
-    const r = await fetch(`${FH}/calendar/ipo?from=${from}&to=${to}&token=${KEY}`);
+    const r = await fetch(`${FH}/calendar/ipo?from=${from}&to=${to}&token=${encodeURIComponent(KEY)}`);
     const j = await r.json().catch(() => ({}));
     return Array.isArray(j) ? j : (j && j.ipoCalendar) ? j.ipoCalendar : [];
   } catch (e) { console.warn('[Calendar] IPO fetch failed', e); return []; }
@@ -101,7 +101,7 @@ async function fetchIpoCalendar(from, to) {
 async function fetchEconomicCalendar(from, to) {
   if (typeof KEY === 'undefined' || !KEY) return [];
   try {
-    const r = await fetch(`${FH}/calendar/economic?from=${from}&to=${to}&token=${KEY}`);
+    const r = await fetch(`${FH}/calendar/economic?from=${from}&to=${to}&token=${encodeURIComponent(KEY)}`);
     const j = await r.json().catch(() => ({}));
     return Array.isArray(j) ? j : (j && j.data) ? j.data : [];
   } catch (e) { console.warn('[Calendar] Economic fetch failed', e); return []; }

@@ -23,7 +23,7 @@ async function fetchBTCandles(sym, res, from, to) {
   const ep = ns.type === 'crypto' ? 'crypto/candle'
            : ns.type === 'forex'  ? 'forex/candle'
            : 'stock/candle';
-  const url = `${FH}/${ep}?symbol=${encodeURIComponent(ns.finnhub)}&resolution=${res}&from=${from}&to=${to}&token=${KEY}`;
+  const url = `${FH}/${ep}?symbol=${encodeURIComponent(ns.finnhub)}&resolution=${res}&from=${from}&to=${to}&token=${encodeURIComponent(KEY)}`;
   const r = await fetch(url);
   const j = await r.json();
   if (j.s === 'error') throw new Error(j.errmsg || 'Finnhub error');

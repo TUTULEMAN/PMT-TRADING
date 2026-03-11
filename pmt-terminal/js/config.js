@@ -9,7 +9,7 @@ window.KEY = '';
 window.MASSIVE = 'https://api.massive.com';
 window.MASSIVE_KEY = '';
 window.EODHD = 'https://eodhd.com/api';
-window.EODHD_KEY = '';
+window.EODHD_KEY = '';  // REST-only (no WebSocket)
 window.FRED = 'https://api.stlouisfed.org/fred';
 window.FRED_KEY = '';
 
@@ -19,20 +19,30 @@ window.FRED_KEY = '';
 window._eodhdDirect = null; // null=unknown, true=direct works, false=needs proxy
 window.CORS_PROXY = 'https://corsproxy.io/?';
 async function fetchEodhd(url) {
-  if (window._eodhdDirect === true) return fetch(url);
+  if (window._eodhdDirect === true) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`EODHD ${r.status}`);
+    return r;
+  }
   if (window._eodhdDirect === false) {
     console.log('[EODHD] using CORS proxy');
-    return fetch(CORS_PROXY + encodeURIComponent(url));
+    const r = await fetch(CORS_PROXY + encodeURIComponent(url));
+    if (!r.ok) throw new Error(`EODHD ${r.status}`);
+    return r;
   }
   try {
     const r = await fetch(url);
+    if (!r.ok) { window._eodhdDirect = true; throw new Error(`EODHD ${r.status}`); }
     window._eodhdDirect = true;
     console.log('[EODHD] direct fetch OK — no proxy needed');
     return r;
   } catch (e) {
+    if (e.message && e.message.startsWith('EODHD ')) throw e;
     console.warn('[EODHD] direct fetch blocked (CORS) — switching to proxy', e.message);
     window._eodhdDirect = false;
-    return fetch(CORS_PROXY + encodeURIComponent(url));
+    const r = await fetch(CORS_PROXY + encodeURIComponent(url));
+    if (!r.ok) throw new Error(`EODHD ${r.status}`);
+    return r;
   }
 }
 

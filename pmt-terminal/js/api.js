@@ -128,7 +128,7 @@ async function testKeys() {
     const toStr = to.toISOString().slice(0, 10);
 
     const [frR, mrR, erR] = await Promise.allSettled([
-      fetch(`${FH}/quote?symbol=AAPL&token=${fh}`).then(r => r.json()),
+      fetch(`${FH}/quote?symbol=AAPL&token=${encodeURIComponent(fh)}`).then(r => r.json()),
       fetch(`${MASSIVE}/v2/aggs/ticker/AAPL/prev?apiKey=${encodeURIComponent(mv)}`).then(r => r.json()),
       fetchEodhd(`${EODHD}/eod/AAPL.US?from=${fromStr}&to=${toStr}&api_token=${encodeURIComponent(eodhd)}&fmt=json`).then(r => r.json())
     ]);
@@ -223,7 +223,7 @@ function goBacktest() {
 // ── WEBSOCKET — real-time prices ─────
 function initWS() {
   try {
-    ws2 = new WebSocket(`wss://ws.finnhub.io?token=${KEY}`);
+    ws2 = new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(KEY)}`);
     ws2.onopen = () => {
       TICKER.forEach(s => {
         const sym = s === 'BTC'    ? 'BINANCE:BTCUSDT'
@@ -369,7 +369,7 @@ async function fetchTickerMassive() {
   if (!MASSIVE_KEY || !TICKER_STOCKS.length) return [];
   try {
     const results = await Promise.allSettled(TICKER_STOCKS.map(async s => {
-      const r = await fetch(`${MASSIVE}/v2/aggs/ticker/${s}/prev?apiKey=${MASSIVE_KEY}`);
+      const r = await fetch(`${MASSIVE}/v2/aggs/ticker/${s}/prev?apiKey=${encodeURIComponent(MASSIVE_KEY)}`);
       const j = await r.json().catch(() => ({}));
       if (!j.results || !j.results.length) return null;
       const bar = j.results[0];
@@ -393,7 +393,7 @@ async function refreshTicker() {
   if (rest.length && KEY) {
     const results = await Promise.allSettled(rest.map(async s => {
       const sym = s === 'BTC' ? 'BINANCE:BTCUSDT' : s === 'ETH' ? 'BINANCE:ETHUSDT' : s === 'EURUSD' ? 'OANDA:EUR_USD' : s;
-      const r = await fetch(`${FH}/quote?symbol=${sym}&token=${KEY}`);
+      const r = await fetch(`${FH}/quote?symbol=${sym}&token=${encodeURIComponent(KEY)}`);
       const j = await r.json().catch(() => ({}));
       if (typeof j.c === 'number' && j.c > 0) {
         const chg = (j.dp != null ? j.dp : (j.pc ? (j.c - j.pc) / j.pc * 100 : 0));
@@ -451,12 +451,12 @@ async function loadSym(sym) {
 
   try {
     let c = null, j = {};
-    const r = await fetch(`${FH}/quote?symbol=${encodeURIComponent(ns.finnhub)}&token=${KEY}`);
+    const r = await fetch(`${FH}/quote?symbol=${encodeURIComponent(ns.finnhub)}&token=${encodeURIComponent(KEY)}`);
     j = await r.json().catch(() => ({}));
     if (r.ok && typeof j.c === 'number') c = j.c;
     if (c == null && MASSIVE_KEY && (ns.type === 'stock' || ns.type === 'index')) {
       const sym = ns.finnhub.replace(/^OANDA:|BINANCE:/, '').split('_')[0];
-      const mr = await fetch(`${MASSIVE}/v2/aggs/ticker/${encodeURIComponent(sym)}/prev?apiKey=${MASSIVE_KEY}`);
+      const mr = await fetch(`${MASSIVE}/v2/aggs/ticker/${encodeURIComponent(sym)}/prev?apiKey=${encodeURIComponent(MASSIVE_KEY)}`);
       const mj = await mr.json().catch(() => ({}));
       if (mj.results && mj.results[0] && mj.results[0].c != null) c = mj.results[0].c;
     }
@@ -522,7 +522,7 @@ function onRealtimeTrade(time, price, volume) {
 async function fetchQuote(ns) {
   try {
     if (ns.type === 'crypto' || ns.type === 'forex') return; // candle data sufficient
-    const r = await fetch(`${FH}/quote?symbol=${ns.finnhub}&token=${KEY}`);
+    const r = await fetch(`${FH}/quote?symbol=${ns.finnhub}&token=${encodeURIComponent(KEY)}`);
     const j = await r.json();
     if (typeof j.c === 'number' && j.c > 0) {
       document.getElementById('px').textContent = fmtP(j.c);
@@ -620,8 +620,8 @@ async function doSearch(q) {
   const qEnc = encodeURIComponent(q);
   let results = [];
   try {
-    const fhPromise = fetch(`${FH}/search?q=${qEnc}&token=${KEY}`).then(r => r.json()).catch(() => ({}));
-    const mvPromise = MASSIVE_KEY ? fetch(`${MASSIVE}/v3/reference/tickers?search=${qEnc}&active=true&limit=8&apiKey=${MASSIVE_KEY}`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
+    const fhPromise = fetch(`${FH}/search?q=${qEnc}&token=${encodeURIComponent(KEY)}`).then(r => r.json()).catch(() => ({}));
+    const mvPromise = MASSIVE_KEY ? fetch(`${MASSIVE}/v3/reference/tickers?search=${qEnc}&active=true&limit=8&apiKey=${encodeURIComponent(MASSIVE_KEY)}`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
     const eodPromise = (typeof EODHD_KEY !== 'undefined' && EODHD_KEY) ? fetchEodhd(`${EODHD}/search/${qEnc}?api_token=${encodeURIComponent(EODHD_KEY)}&fmt=json&limit=5`).then(r => r.json()).catch(() => null) : Promise.resolve(null);
     const [fj, mj, ej] = await Promise.all([fhPromise, mvPromise, eodPromise]);
     results = (fj.result || []).filter(x => x.type && x.type !== 'EQS').map(x => ({ symbol: x.symbol, description: x.description }));
@@ -674,13 +674,13 @@ async function fetchFinnhubCandles(symbol, days) {
   const res = 'D';
   try {
     const endpoint = ns.type === 'crypto' ? 'crypto/candle' : 'stock/candle';
-    const r = await fetch(`${FH}/${endpoint}?symbol=${encodeURIComponent(ns.finnhub)}&resolution=${res}&from=${from}&to=${to}&token=${KEY}`);
+    const r = await fetch(`${FH}/${endpoint}?symbol=${encodeURIComponent(ns.finnhub)}&resolution=${res}&from=${from}&to=${to}&token=${encodeURIComponent(KEY)}`);
     const j = await r.json().catch(() => ({}));
     console.log(`[Backtest] Finnhub ${endpoint} for ${ns.finnhub}:`, j.s, j.c ? j.c.length + ' bars' : 'no data');
     if (j.s !== 'ok' || !j.c || !j.c.length) {
       // If stock endpoint failed for crypto, try crypto endpoint
       if (ns.type === 'crypto' && endpoint === 'stock/candle') {
-        const r2 = await fetch(`${FH}/crypto/candle?symbol=${encodeURIComponent(ns.finnhub)}&resolution=${res}&from=${from}&to=${to}&token=${KEY}`);
+        const r2 = await fetch(`${FH}/crypto/candle?symbol=${encodeURIComponent(ns.finnhub)}&resolution=${res}&from=${from}&to=${to}&token=${encodeURIComponent(KEY)}`);
         const j2 = await r2.json().catch(() => ({}));
         if (j2.s !== 'ok' || !j2.c || !j2.c.length) return null;
         return j2.t.map((t, i) => ({
@@ -708,7 +708,7 @@ async function fetchMassiveHistory(symbol, days) {
   const dateFrom = from.toISOString().slice(0, 10);
   const dateTo = to.toISOString().slice(0, 10);
   try {
-    const url = `${MASSIVE}/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${dateFrom}/${dateTo}?adjusted=true&sort=asc&limit=5000&apiKey=${MASSIVE_KEY}`;
+    const url = `${MASSIVE}/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${dateFrom}/${dateTo}?adjusted=true&sort=asc&limit=5000&apiKey=${encodeURIComponent(MASSIVE_KEY)}`;
     console.log(`[Backtest] Massive fetch: ${ticker}`, dateFrom, '→', dateTo);
     const r = await fetch(url);
     const j = await r.json().catch(() => ({}));
@@ -765,7 +765,7 @@ function initAnalyticsPanel() {
   const tryFetch = typeof KEY !== 'undefined' && KEY;
   // Sector heatmap — try Finnhub first
   if (tryFetch) {
-    fetch(`${FH}/stock/sector-performance?token=${KEY}`)
+    fetch(`${FH}/stock/sector-performance?token=${encodeURIComponent(KEY)}`)
       .then(r => r.json())
       .then(j => {
         const arr = Array.isArray(j) ? j : (j && j.data) ? j.data : (j && j.sectorPerformance) ? j.sectorPerformance : null;
@@ -799,7 +799,7 @@ async function fetchAssetClassesLive() {
   // Live % from Finnhub only (one batch — sector heatmap uses Finnhub too, so we keep quotes here)
   const results = await Promise.allSettled(
     ASSET_PROXIES.map(a =>
-      fetch(`${FH}/quote?symbol=${encodeURIComponent(a.sym)}&token=${KEY}`).then(r => r.json())
+      fetch(`${FH}/quote?symbol=${encodeURIComponent(a.sym)}&token=${encodeURIComponent(KEY)}`).then(r => r.json())
     )
   );
   let items = ASSET_PROXIES.map((a, i) => {
@@ -822,7 +822,7 @@ function fetchMassiveSnapshot() {
   if (!el) return;
   const syms = ['AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','JPM','V'];
   Promise.allSettled(syms.map(s =>
-    fetch(`${MASSIVE}/v2/aggs/ticker/${s}/prev?apiKey=${MASSIVE_KEY}`).then(r => r.json())
+    fetch(`${MASSIVE}/v2/aggs/ticker/${s}/prev?apiKey=${encodeURIComponent(MASSIVE_KEY)}`).then(r => r.json())
   )).then(results => {
     const data = results.map((r, i) => {
       if (r.status !== 'fulfilled' || !r.value.results || !r.value.results.length) return null;
@@ -945,7 +945,7 @@ async function fetchFinnhubSpread(sym) {
   if (!KEY || !sym) return null;
   const ns = normSym(sym);
   try {
-    const r = await fetch(`${FH}/quote?symbol=${encodeURIComponent(ns.finnhub)}&token=${KEY}`);
+    const r = await fetch(`${FH}/quote?symbol=${encodeURIComponent(ns.finnhub)}&token=${encodeURIComponent(KEY)}`);
     const j = await r.json().catch(() => ({}));
     if (j && typeof j.c === 'number') {
       return {
@@ -1512,7 +1512,7 @@ async function fetchEconIndicators() {
   try {
     const results = await Promise.allSettled(
       ECON_SERIES.map(s =>
-        fetch(`${FRED}/series/observations?series_id=${s.id}&api_key=${FRED_KEY}&file_type=json&sort_order=desc&limit=12`)
+        fetch(`${FRED}/series/observations?series_id=${s.id}&api_key=${encodeURIComponent(FRED_KEY)}&file_type=json&sort_order=desc&limit=12`)
           .then(r => r.json())
       )
     );
