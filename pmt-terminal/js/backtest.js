@@ -236,7 +236,7 @@ async function runBacktest() {
     console.log(`[Backtest] Starting data fetch for ${sym}`);
 
     const MIN_BARS = 15;
-    const HIST_DAYS = 90;
+    const HIST_DAYS = 365;
     const delay = ms => new Promise(r => setTimeout(r, ms));
 
     // 1) If the symbol is already loaded in the chart with enough bars, use that
@@ -325,7 +325,10 @@ async function runBacktest() {
 
     st.textContent = 'Computing analytics…';
     const a = cAnalytics(eq, trades, cap);
-    lastBT = { eq, trades, analytics: a, cap, sym, strat: curStrat, from2: dataSrcLabel, to2: dataSrcLabel };
+    const fmtD = ts => new Date(ts * 1000).toISOString().slice(0, 10);
+    const from2 = data.length ? fmtD(data[0].time) : '—';
+    const to2   = data.length ? fmtD(data[data.length - 1].time) : '—';
+    lastBT = { eq, trades, analytics: a, cap, sym, strat: curStrat, from2, to2 };
     st.textContent = `${dataSrcLabel} · ${data.length} bars · ${trades.length} trades`;
     renderBT(eq, a.dds, trades, a, cap);
     renderAnalytics();
