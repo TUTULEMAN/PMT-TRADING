@@ -356,8 +356,12 @@ function renderBT(eq, dds, trades, a, cap) {
   sc('sal', al2.toFixed(2) + '%', 'neg');
   sc('spf', isFinite(pf) ? pf.toFixed(2) : '∞', pf >= 1.5 ? 'pos' : pf >= 1 ? 'neu' : 'neg');
 
-  buildEqChart(eq, cap);
-  buildDDChart(dds);
+  // Defer chart creation by one frame so the flex layout has settled
+  // and el.clientWidth / el.clientHeight return real pixel values.
+  setTimeout(() => {
+    buildEqChart(eq, cap);
+    buildDDChart(dds);
+  }, 50);
 
   const tb = document.getElementById('tbody');
   tb.innerHTML = '';

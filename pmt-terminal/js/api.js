@@ -1399,7 +1399,7 @@ document.addEventListener('keydown', function(e) {
 
   if (e.key >= '1' && e.key <= '5') { switchViewByIdx(parseInt(e.key) - 1); return; }
   if (e.key === 'n' || e.key === 'N') { toggleNewsSidebar(); return; }
-  if (e.key === 't' && !e.ctrlKey && !e.metaKey) { cycleTheme(); return; }
+  if ((e.key === 't' || e.key === 'T') && !e.ctrlKey && !e.metaKey) { cycleTheme(); return; }
 });
 
 // ══════════════════════════════════════════════════════════════════════

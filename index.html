@@ -413,13 +413,13 @@ function signal(i, data, ind) {
         </div>
         <!-- Charts -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);flex-shrink:0;height:160px">
-          <div style="background:var(--bg);position:relative">
+          <div style="background:var(--bg);position:relative;height:160px;overflow:hidden">
             <div class="pl">Equity Curve<span id="eqv"></span></div>
-            <div id="ep" style="width:100%;height:100%"></div>
+            <div id="ep" style="width:100%;height:160px"></div>
           </div>
-          <div style="background:var(--bg);position:relative">
+          <div style="background:var(--bg);position:relative;height:160px;overflow:hidden">
             <div class="pl">Drawdown<span id="ddv"></span></div>
-            <div id="dp" style="width:100%;height:100%"></div>
+            <div id="dp" style="width:100%;height:160px"></div>
           </div>
         </div>
         <!-- Trade log -->
