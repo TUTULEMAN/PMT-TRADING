@@ -15,35 +15,61 @@ window.FRED_KEY = '';
 
 
 // EODHD doesn't send CORS headers — route through a proxy when running in a browser.
-// Auto-detects on first call: tries direct, falls back to proxy, caches the result.
-window._eodhdDirect = null; // null=unknown, true=direct works, false=needs proxy
-window.CORS_PROXY = 'https://corsproxy.io/?';
+// Tries direct first, then falls back through CORS_PROXIES in order.
+window._eodhdDirect = null;   // null=unknown, true=direct works, false=needs proxy
+window._eodhdProxyIdx = 0;    // index of last-good proxy in CORS_PROXIES
+window.CORS_PROXIES = [
+  'https://api.allorigins.win/raw?url=',  // returns raw body; works even when corsproxy is blocked
+  'https://corsproxy.io/?',               // simple prefix proxy (fallback)
+];
+
 async function fetchEodhd(url) {
+  // Fast path: direct confirmed to work
   if (window._eodhdDirect === true) {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`EODHD ${r.status}`);
     return r;
   }
+  // Fast path: already know proxy is needed
   if (window._eodhdDirect === false) {
-    console.log('[EODHD] using CORS proxy');
-    const r = await fetch(CORS_PROXY + encodeURIComponent(url));
-    if (!r.ok) throw new Error(`EODHD ${r.status}`);
-    return r;
+    return _fetchEodhdViaProxies(url);
   }
+  // First call — probe direct, fall back to proxies on any failure
   try {
     const r = await fetch(url);
-    if (!r.ok) { window._eodhdDirect = true; throw new Error(`EODHD ${r.status}`); }
-    window._eodhdDirect = true;
-    console.log('[EODHD] direct fetch OK — no proxy needed');
-    return r;
+    if (r.ok) {
+      window._eodhdDirect = true;
+      console.log('[EODHD] direct fetch OK — no proxy needed');
+      return r;
+    }
+    // Non-2xx from direct (e.g. 403 due to server-side CORS block) — still try proxies
+    console.warn('[EODHD] direct returned', r.status, '— trying proxies');
   } catch (e) {
-    if (e.message && e.message.startsWith('EODHD ')) throw e;
-    console.warn('[EODHD] direct fetch blocked (CORS) — switching to proxy', e.message);
-    window._eodhdDirect = false;
-    const r = await fetch(CORS_PROXY + encodeURIComponent(url));
-    if (!r.ok) throw new Error(`EODHD ${r.status}`);
-    return r;
+    // CORS TypeError or network block — expected in a hosted browser context
+    console.warn('[EODHD] direct blocked (CORS/network) — switching to proxy');
   }
+  window._eodhdDirect = false;
+  return _fetchEodhdViaProxies(url);
+}
+
+async function _fetchEodhdViaProxies(url) {
+  const proxies = window.CORS_PROXIES;
+  // Start from last-known-good proxy index, cycle through all on failure
+  const order = Array.from({ length: proxies.length }, (_, i) => (i + window._eodhdProxyIdx) % proxies.length);
+  for (const idx of order) {
+    try {
+      const r = await fetch(proxies[idx] + encodeURIComponent(url));
+      if (r.ok) {
+        window._eodhdProxyIdx = idx;
+        console.log('[EODHD] proxy OK:', proxies[idx]);
+        return r;
+      }
+      console.warn('[EODHD] proxy', idx, 'returned', r.status);
+    } catch (e) {
+      console.warn('[EODHD] proxy', idx, 'error:', e.message);
+    }
+  }
+  throw new Error('EODHD: all proxies failed — check your key and network');
 }
 
 // Chart instances

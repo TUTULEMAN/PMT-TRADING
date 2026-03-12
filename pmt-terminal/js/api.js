@@ -209,6 +209,7 @@ function switchView(id, btn) {
   if (btn) btn.classList.add('on');
   if (id === 'cv') setTimeout(resizeCharts, 50);
   if (id === 'calv' && typeof initCalendar === 'function') initCalendar();
+  if (id === 'gv' && typeof initArcadeView === 'function') initArcadeView();
   if (id === 'bv' && curSym) {
     const bs = document.getElementById('bs');
     if (bs && !bs.value.trim()) bs.value = curSym;
